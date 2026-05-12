@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Database — NEVER commit
+*.db
+*.sqlite
+data/
+
+# Environment secrets
+.env
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docker
+.docker/
+
+# Claude Code local config
+.claude/
+
+# Sisyphus evidence (large artifacts)
+.sisyphus/evidence/
