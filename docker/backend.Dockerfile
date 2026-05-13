@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 COPY backend/pyproject.toml .
 
-RUN pip install --upgrade pip setuptools wheel && \
+RUN pip install --upgrade pip && \
     pip install --prefix=/install --no-warn-script-location .
 
 # Stage 2: runtime — slim image
