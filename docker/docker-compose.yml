@@ -3,16 +3,24 @@ services:
     build:
       context: ..
       dockerfile: docker/backend.Dockerfile
+    env_file:
+      - path: ../.env
+        required: true
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - JWT_SECRET=${JWT_SECRET:-change-me-in-production-use-32-random-chars}
     volumes:
       - ../data:/app/data
     restart: unless-stopped
     networks:
       - internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
@@ -21,7 +29,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
