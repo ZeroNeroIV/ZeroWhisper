@@ -10,6 +10,7 @@ from app.routers import exchange_rates as rates_router
 from app.routers import api_keys as apikeys_router
 from app.routers import mcp as mcp_router
 from app.routers import whisper as whisper_router
+from app.routers import dashboard as dashboard_router
 
 app = FastAPI(title="ZeroWhisper", version="0.1.0")
 
@@ -23,6 +24,7 @@ app.include_router(rates_router.router, prefix="/api/exchange-rates", tags=["exc
 app.include_router(apikeys_router.router, prefix="/api/api-keys", tags=["api-keys"])
 app.include_router(mcp_router.router, prefix="/mcp", tags=["mcp"])
 app.include_router(whisper_router.router, prefix="/api/whisper", tags=["whisper"])
+app.include_router(dashboard_router.router, prefix="/api/dashboard", tags=["dashboard"])
 
 
 @app.get("/health")
