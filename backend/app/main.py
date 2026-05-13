@@ -1,13 +1,26 @@
 from fastapi import FastAPI
 
-from app.config import settings  # noqa: F401 — imported for side-effects (env loading)
+from app.config import settings  # noqa: F401 — triggers env loading
 from app.middleware.setup_guard import SetupGuardMiddleware
 from app.routers import setup as setup_router
+from app.routers import auth as auth_router
+from app.routers import transactions as tx_router
+from app.routers import imports as imports_router
+from app.routers import exchange_rates as rates_router
+from app.routers import api_keys as apikeys_router
+from app.routers import mcp as mcp_router
 
 app = FastAPI(title="ZeroWhisper", version="0.1.0")
 
 app.add_middleware(SetupGuardMiddleware)
+
 app.include_router(setup_router.router, prefix="/setup", tags=["setup"])
+app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
+app.include_router(tx_router.router, prefix="/api/transactions", tags=["transactions"])
+app.include_router(imports_router.router, prefix="/api/imports", tags=["imports"])
+app.include_router(rates_router.router, prefix="/api/exchange-rates", tags=["exchange-rates"])
+app.include_router(apikeys_router.router, prefix="/api/api-keys", tags=["api-keys"])
+app.include_router(mcp_router.router, prefix="/mcp", tags=["mcp"])
 
 
 @app.get("/health")
