@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -243,7 +243,11 @@ export default function LoginPage() {
             </Tabs>
 
             <p className="mt-6 text-center text-xs text-muted-foreground">
-              First time? Go through <span className="font-medium">/setup</span> first.
+              First time?{' '}
+              <Link to="/setup" className="font-medium underline underline-offset-4 hover:text-foreground">
+                Initialize the database
+              </Link>{' '}
+              first.
             </p>
           </CardContent>
         </Card>
