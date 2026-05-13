@@ -15,8 +15,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(() =>
     localStorage.getItem('username')
   )
-
-  const isAuthenticated = !!localStorage.getItem('access_token')
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
+    () => !!localStorage.getItem('access_token')
+  )
 
   const login = async (username: string, password: string) => {
     const { data } = await api.post('/auth/login', { username, password })
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('refresh_token', data.refresh_token)
     localStorage.setItem('username', username)
     setUsername(username)
+    setIsAuthenticated(true)
   }
 
   const register = async (username: string, email: string, password: string) => {
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('username')
     setUsername(null)
+    setIsAuthenticated(false)
     window.location.href = '/login'
   }
 

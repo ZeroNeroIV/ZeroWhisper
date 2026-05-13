@@ -1,8 +1,11 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+_INSECURE_DEFAULT = "change-me-in-production-use-32-random-chars"
 
 
 class Settings(BaseSettings):
-    jwt_secret: str = "change-me-in-production-use-32-random-chars"
+    jwt_secret: str = _INSECURE_DEFAULT
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
@@ -17,6 +20,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     auto_fetch_exchange_rate: bool = False
     default_exchange_rate: float = 0.709  # JOD per USD fallback
+
+    @model_validator(mode="after")
+    def _reject_insecure_default(self) -> "Settings":
+        if self.jwt_secret == _INSECURE_DEFAULT:
+            raise ValueError(
+                "jwt_secret must be set to a secure random value in your .env file. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return self
 
     class Config:
         env_file = ".env"

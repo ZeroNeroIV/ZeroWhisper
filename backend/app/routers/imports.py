@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
@@ -38,5 +38,5 @@ async def upload_csv(
     try:
         result = import_csv(session, current_user.id, file_content)
     except ValueError as exc:
-        return {"error": str(exc)}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return {"imported": result.imported, "errors": result.errors}

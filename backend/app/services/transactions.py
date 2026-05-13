@@ -107,7 +107,7 @@ def update_transaction(
     session: Session, tx_id: UUID, user_id: UUID, data: TransactionUpdate
 ) -> Transaction:
     tx = get_transaction(session, tx_id, user_id)
-    update_data = data.dict(exclude_unset=True)
+    update_data = data.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
         setattr(tx, field, value)

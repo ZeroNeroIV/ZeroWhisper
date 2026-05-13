@@ -10,7 +10,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.services.api_key_service import create_api_key, list_keys, revoke_key
 
-router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
+router = APIRouter(tags=["api-keys"])
 
 
 class CreateKeyRequest(BaseModel):

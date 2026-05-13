@@ -11,6 +11,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
+# Set a test JWT secret before importing app modules so the Settings
+# model_validator does not reject the insecure default.
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-testing-only-32ch")
+
 # Must import database helpers before the app to avoid circular issues
 from app.database import initialize_engine, create_db_and_tables, get_engine
 import app.services.setup as setup_service
