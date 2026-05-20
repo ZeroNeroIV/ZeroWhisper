@@ -22,6 +22,7 @@ class AiSettingsUpdate(BaseModel):
     gemini_api_key: str | None = None
     gemini_model: str | None = None
     groq_api_key: str | None = None
+    groq_model: str | None = None
     local_whisper_model: str | None = None
 
 

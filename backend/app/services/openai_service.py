@@ -66,6 +66,11 @@ def _get_client() -> AsyncOpenAI:
                 api_key=_s("gemini_api_key"),
                 base_url="https://generativelanguage.googleapis.com/openai/",
             )
+        elif provider == "groq":
+            _client = AsyncOpenAI(
+                api_key=_s("groq_api_key"),
+                base_url="https://api.groq.com/openai/v1",
+            )
         else:
             _client = AsyncOpenAI(
                 api_key=_s("openai_api_key"),
@@ -78,6 +83,8 @@ def _get_model() -> str:
     provider = _s("ai_provider", "openai")
     if provider == "gemini":
         return _s("gemini_model", "gemini-2.5-flash")
+    if provider == "groq":
+        return _s("groq_model", "llama-3.3-70b-versatile")
     return _s("openai_model", "gpt-4o-mini")
 
 
@@ -166,6 +173,8 @@ def health_check() -> bool:
     provider = _s("ai_provider", "openai")
     if provider == "gemini":
         return bool(_s("gemini_api_key"))
+    if provider == "groq":
+        return bool(_s("groq_api_key"))
     return bool(_s("openai_api_key"))
 
 

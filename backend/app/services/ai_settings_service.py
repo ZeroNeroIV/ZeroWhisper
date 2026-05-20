@@ -50,6 +50,7 @@ def get_all() -> dict:
         "gemini_api_key":       cfg.get("gemini_api_key") or settings.gemini_api_key,
         "gemini_model":         cfg.get("gemini_model") or settings.gemini_model,
         "groq_api_key":         cfg.get("groq_api_key") or settings.groq_api_key,
+        "groq_model":           cfg.get("groq_model") or "llama-3.3-70b-versatile",
         "local_whisper_model":  cfg.get("local_whisper_model") or settings.local_whisper_model,
     }
 
@@ -71,6 +72,7 @@ def get_masked() -> dict:
         "gemini_api_key":       _mask(raw["gemini_api_key"]),
         "gemini_model":         raw["gemini_model"],
         "groq_api_key":         _mask(raw["groq_api_key"]),
+        "groq_model":           raw["groq_model"],
         "local_whisper_model":  raw["local_whisper_model"],
     }
 

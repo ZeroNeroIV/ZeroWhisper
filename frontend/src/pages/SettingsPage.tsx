@@ -458,6 +458,7 @@ interface AiSettings {
   gemini_api_key: string
   gemini_model: string
   groq_api_key: string
+  groq_model: string
   local_whisper_model: string
   ai_ready: boolean
   transcription_ready: boolean
@@ -465,10 +466,37 @@ interface AiSettings {
   model: string
 }
 
-const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1']
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']
-const GROQ_MODELS   = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o3-mini', 'o4-mini']
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemma-3-27b-it', 'gemma-3-12b-it']
+const GROQ_MODELS   = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'gemma-7b-it']
 const WHISPER_SIZES = ['tiny', 'base', 'small', 'medium', 'large-v3']
+
+function ModelInput({ id, value, onChange, list }: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  list: string[]
+}) {
+  const listId = `${id}-list`
+  return (
+    <>
+      <input
+        id={id}
+        type="text"
+        list={listId}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Type or choose a model name"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <datalist id={listId}>
+        {list.map(m => <option key={m} value={m} />)}
+      </datalist>
+    </>
+  )
+}
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -491,6 +519,7 @@ function AiTab() {
   const [geminiKey, setGeminiKey] = useState('')
   const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash')
   const [groqKey, setGroqKey] = useState('')
+  const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile')
   const [localModel, setLocalModel] = useState('small')
 
   const load = () => {
@@ -501,6 +530,7 @@ function AiTab() {
         setProvider(r.data.ai_provider)
         setOpenaiModel(r.data.openai_model)
         setGeminiModel(r.data.gemini_model)
+        setGroqModel(r.data.groq_model)
         setLocalModel(r.data.local_whisper_model)
         // Don't pre-fill key fields — user types to update
       })
@@ -517,6 +547,7 @@ function AiTab() {
         ai_provider: provider,
         openai_model: openaiModel,
         gemini_model: geminiModel,
+        groq_model: groqModel,
         local_whisper_model: localModel,
         // Only send key if user typed something; null = keep existing
         openai_api_key: openaiKey || null,
@@ -595,14 +626,7 @@ function AiTab() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="openai-model">Model</Label>
-              <select
-                id="openai-model"
-                value={openaiModel}
-                onChange={e => setOpenaiModel(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {OPENAI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <ModelInput id="openai-model" value={openaiModel} onChange={setOpenaiModel} list={OPENAI_MODELS} />
             </div>
           </div>
         )}
@@ -623,14 +647,7 @@ function AiTab() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="gemini-model">Model</Label>
-              <select
-                id="gemini-model"
-                value={geminiModel}
-                onChange={e => setGeminiModel(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <ModelInput id="gemini-model" value={geminiModel} onChange={setGeminiModel} list={GEMINI_MODELS} />
             </div>
           </div>
         )}
@@ -654,14 +671,7 @@ function AiTab() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="groq-model">Model</Label>
-              <select
-                id="groq-model"
-                value={openaiModel}
-                onChange={e => setOpenaiModel(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <ModelInput id="groq-model" value={groqModel} onChange={setGroqModel} list={GROQ_MODELS} />
             </div>
           </div>
         )}
@@ -688,14 +698,7 @@ function AiTab() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="local-model">Local Whisper model (offline fallback)</Label>
-          <select
-            id="local-model"
-            value={localModel}
-            onChange={e => setLocalModel(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {WHISPER_SIZES.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <ModelInput id="local-model" value={localModel} onChange={setLocalModel} list={WHISPER_SIZES} />
         </div>
       </Card>
 
