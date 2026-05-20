@@ -3,11 +3,10 @@ from io import BytesIO
 
 from openai import AsyncOpenAI
 
-from app.config import settings
 from app.schemas.agent import TransactionProposal, VALID_CATEGORIES
 
 _client: AsyncOpenAI | None = None
-_transcription_client: AsyncOpenAI | None = None  # Groq (preferred, free) or OpenAI
+_transcription_client: AsyncOpenAI | None = None
 
 _EXTRACTION_SCHEMA = {
     "type": "json_schema",
@@ -45,48 +44,62 @@ _PERSONA_SYSTEM = (
 )
 
 
+def reset_clients() -> None:
+    """Clear cached clients — called when AI settings change at runtime."""
+    global _client, _transcription_client
+    _client = None
+    _transcription_client = None
+
+
+def _s(key: str, fallback=None):
+    """Read from runtime AI settings."""
+    from app.services import ai_settings_service
+    return ai_settings_service.get(key, fallback)
+
+
 def _get_client() -> AsyncOpenAI:
-    """Return the AI client for text tasks (OpenAI or Gemini)."""
     global _client
     if _client is None:
-        if settings.ai_provider == "gemini":
+        provider = _s("ai_provider", "openai")
+        if provider == "gemini":
             _client = AsyncOpenAI(
-                api_key=settings.gemini_api_key,
+                api_key=_s("gemini_api_key"),
                 base_url="https://generativelanguage.googleapis.com/openai/",
             )
         else:
             _client = AsyncOpenAI(
-                api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url,
+                api_key=_s("openai_api_key"),
+                base_url="https://api.openai.com/v1",
             )
     return _client
 
 
 def _get_model() -> str:
-    if settings.ai_provider == "gemini":
-        return settings.gemini_model
-    return settings.whisper_model
+    provider = _s("ai_provider", "openai")
+    if provider == "gemini":
+        return _s("gemini_model", "gemini-2.5-flash")
+    return _s("openai_model", "gpt-4o-mini")
 
 
 def _get_transcription_client() -> AsyncOpenAI:
-    """Return the transcription client: Groq (free, preferred) or OpenAI."""
     global _transcription_client
     if _transcription_client is None:
-        if settings.groq_api_key:
+        groq_key = _s("groq_api_key")
+        if groq_key:
             _transcription_client = AsyncOpenAI(
-                api_key=settings.groq_api_key,
+                api_key=groq_key,
                 base_url="https://api.groq.com/openai/v1",
             )
         else:
             _transcription_client = AsyncOpenAI(
-                api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url,
+                api_key=_s("openai_api_key"),
+                base_url="https://api.openai.com/v1",
             )
     return _transcription_client
 
 
 def _transcription_model() -> str:
-    return "whisper-large-v3" if settings.groq_api_key else "whisper-1"
+    return "whisper-large-v3" if _s("groq_api_key") else "whisper-1"
 
 
 async def extract_transaction(nl_input: str) -> TransactionProposal:
@@ -132,7 +145,7 @@ async def generate_persona(category: str, spending_context: dict) -> str:
 
 async def transcribe_audio(data: bytes, filename: str) -> str:
     """Transcribe audio: Groq → OpenAI → local Whisper (automatic fallback)."""
-    if settings.groq_api_key or settings.openai_api_key:
+    if _s("groq_api_key") or _s("openai_api_key"):
         client = _get_transcription_client()
         model = _transcription_model()
         mime = "audio/webm" if filename.endswith(".webm") else "audio/ogg"
@@ -150,22 +163,23 @@ async def transcribe_audio(data: bytes, filename: str) -> str:
 
 
 def health_check() -> bool:
-    """Check if AI text processing (extraction + persona) is available."""
-    if settings.ai_provider == "gemini":
-        return bool(settings.gemini_api_key)
-    return bool(settings.openai_api_key)
+    provider = _s("ai_provider", "openai")
+    if provider == "gemini":
+        return bool(_s("gemini_api_key"))
+    return bool(_s("openai_api_key"))
 
 
 def transcribe_health_check() -> bool:
-    """Always True — local Whisper is always available as fallback."""
     return True
 
 
 def ai_status() -> dict:
-    """Return current AI provider configuration."""
-    transcription_backend = "groq" if settings.groq_api_key else ("openai" if settings.openai_api_key else f"local:{settings.local_whisper_model}")
+    groq_key = _s("groq_api_key")
+    openai_key = _s("openai_api_key")
+    local_model = _s("local_whisper_model", "small")
+    transcription_backend = "groq" if groq_key else ("openai" if openai_key else f"local:{local_model}")
     return {
-        "provider": settings.ai_provider,
+        "provider": _s("ai_provider", "openai"),
         "model": _get_model(),
         "ai_ready": health_check(),
         "transcription_ready": transcribe_health_check(),

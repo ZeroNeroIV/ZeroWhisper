@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     db_path: str = "data/zerowhisper.db"
     setup_state_path: str = "data/setup_state.json"
+    ai_settings_path: str = "data/ai_settings.json"
 
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"

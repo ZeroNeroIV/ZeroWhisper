@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -13,8 +15,17 @@ from app.routers import mcp as mcp_router
 from app.routers import whisper as whisper_router
 from app.routers import dashboard as dashboard_router
 from app.routers import analytics as analytics_router
+from app.routers import ai_settings as ai_settings_router
 
-app = FastAPI(title="ZeroWhisper", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    from app.services import setup as setup_service, ai_settings_service
+    ai_settings_service.load()
+    setup_service.auto_unlock_open_vaults()
+    yield
+
+
+app = FastAPI(title="ZeroWhisper", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(SetupGuardMiddleware)
 
@@ -44,6 +55,7 @@ app.include_router(mcp_router.router, prefix="/mcp", tags=["mcp"])
 app.include_router(whisper_router.router, prefix="/api/whisper", tags=["whisper"])
 app.include_router(dashboard_router.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(analytics_router.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(ai_settings_router.router, prefix="/api/ai-settings", tags=["ai-settings"])
 
 
 @app.get("/health")

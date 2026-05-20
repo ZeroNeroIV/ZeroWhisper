@@ -50,6 +50,16 @@ def initialize_engine(db_path: str, key: str) -> None:
     _engine = create_engine("sqlite://", creator=_creator, echo=False)
 
 
+def initialize_plain_engine(db_path: str) -> None:
+    """Create an unencrypted SQLite engine for open vaults."""
+    global _engine
+    _engine = create_engine(
+        f"sqlite:///{db_path}",
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+
+
 def get_engine():
     if _engine is None:
         raise RuntimeError("Database not initialized. Complete first-run setup first.")

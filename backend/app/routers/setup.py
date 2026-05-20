@@ -34,8 +34,12 @@ class CreateVaultRequest(BaseModel):
     passphrase: str = Field(..., min_length=8)
 
 
+class CreateOpenVaultRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+
+
 class UnlockVaultRequest(BaseModel):
-    passphrase: str = Field(...)
+    passphrase: str | None = Field(default=None)
 
 
 class RecoverVaultRequest(BaseModel):
@@ -145,14 +149,38 @@ def create_vault(body: CreateVaultRequest):
     }
 
 
+@router.post("/vaults/open")
+def create_open_vault(body: CreateOpenVaultRequest):
+    """
+    Create a new unencrypted open vault.
+    Open vaults require no passphrase and auto-unlock on server startup.
+    Anyone can register and log in to an open vault.
+    """
+    vault_id = setup_service.create_open_vault(body.name)
+    return {"vault_id": vault_id}
+
+
 @router.post("/vaults/{vault_id}/unlock")
 def unlock_vault(vault_id: str, body: UnlockVaultRequest):
     """
     Unlock a specific vault and make it active.
+    Open vaults unlock without a passphrase.
     Returns 404 if the vault does not exist, 401 if the passphrase is wrong.
     """
-    if not setup_service.get_vault(vault_id):
+    vault = setup_service.get_vault(vault_id)
+    if not vault:
         raise not_found("Vault not found")
+
+    if vault.get("vault_type") == "open":
+        if setup_service.get_active_vault_id() == vault_id and setup_service.is_db_ready():
+            return {"vault_id": vault_id, "db_ready": True}
+        if not setup_service.unlock_open_vault(vault_id):
+            raise HTTPException(status_code=500, detail="Failed to open vault")
+        return {"vault_id": vault_id, "db_ready": True}
+
+    # Secure vault — passphrase required
+    if not body.passphrase:
+        raise bad_request("Passphrase required for secure vault")
 
     if setup_service.get_active_vault_id() == vault_id and setup_service.is_db_ready():
         if not setup_service.verify_passphrase(body.passphrase):

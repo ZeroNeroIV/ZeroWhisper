@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { Card, Button, Input, Field } from '@fluentui/react-components'
-import { Lock, Unlock, Plus, ShieldCheck } from 'lucide-react'
+import { Lock, Unlock, Plus, ShieldCheck, Globe } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Vault {
   id: string
   name: string
+  vault_type: 'open' | 'secure'
   created_at: string
   is_active: boolean
 }
@@ -38,6 +39,17 @@ function VaultsView({
   onNew: () => void
 }) {
   const navigate = useNavigate()
+  const [openingId, setOpeningId] = useState<string | null>(null)
+
+  const handleOpenVaultClick = async (vault: Vault) => {
+    setOpeningId(vault.id)
+    try {
+      await api.post(`/setup/vaults/${vault.id}/unlock`, {})
+      navigate('/login')
+    } finally {
+      setOpeningId(null)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -54,28 +66,38 @@ function VaultsView({
         >
           {vault.is_active
             ? <Unlock size={16} className="text-green-600 shrink-0" />
-            : <Lock size={16} className="text-muted-foreground shrink-0" />
+            : vault.vault_type === 'open'
+              ? <Globe size={16} className="text-blue-500 shrink-0" />
+              : <Lock size={16} className="text-muted-foreground shrink-0" />
           }
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{vault.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-medium truncate">{vault.name}</p>
+              {vault.vault_type === 'open' && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 shrink-0">
+                  Open
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               {new Date(vault.created_at).toLocaleDateString()}
             </p>
           </div>
           {vault.is_active ? (
-            <Button
-              size="small"
-              appearance="primary"
-              onClick={() => navigate('/login')}
-            >
+            <Button size="small" appearance="primary" onClick={() => navigate('/login')}>
               Open
             </Button>
-          ) : (
+          ) : vault.vault_type === 'open' ? (
             <Button
               size="small"
               appearance="outline"
-              onClick={() => onUnlock(vault)}
+              disabled={openingId === vault.id}
+              onClick={() => handleOpenVaultClick(vault)}
             >
+              {openingId === vault.id ? '…' : 'Open'}
+            </Button>
+          ) : (
+            <Button size="small" appearance="outline" onClick={() => onUnlock(vault)}>
               Unlock
             </Button>
           )}
@@ -96,7 +118,8 @@ function VaultsView({
 
 // ── New Vault ──────────────────────────────────────────────────────────────────
 
-function NewVaultView({ onDone }: { onDone: (phrase: string) => void }) {
+function NewVaultView({ onDone }: { onDone: (phrase: string | null) => void }) {
+  const [vaultType, setVaultType] = useState<'secure' | 'open'>('secure')
   const [name, setName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -107,12 +130,21 @@ function NewVaultView({ onDone }: { onDone: (phrase: string) => void }) {
     e.preventDefault()
     setError(null)
     if (!name.trim()) { setError('Vault name is required.'); return }
-    if (passphrase.length < 8) { setError('Passphrase must be at least 8 characters.'); return }
-    if (passphrase !== confirm) { setError('Passphrases do not match.'); return }
+
+    if (vaultType === 'secure') {
+      if (passphrase.length < 8) { setError('Passphrase must be at least 8 characters.'); return }
+      if (passphrase !== confirm) { setError('Passphrases do not match.'); return }
+    }
+
     setLoading(true)
     try {
-      const { data } = await api.post('/setup/vaults', { name: name.trim(), passphrase })
-      onDone(data.recovery_phrase)
+      if (vaultType === 'open') {
+        await api.post('/setup/vaults/open', { name: name.trim() })
+        onDone(null)
+      } else {
+        const { data } = await api.post('/setup/vaults', { name: name.trim(), passphrase })
+        onDone(data.recovery_phrase)
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -122,13 +154,43 @@ function NewVaultView({ onDone }: { onDone: (phrase: string) => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Each vault is an independent encrypted database with its own passphrase.
-      </p>
+      {/* Vault type selector */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setVaultType('secure')}
+          className={`rounded-lg border-2 px-3 py-3 text-left transition-colors ${
+            vaultType === 'secure'
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:border-muted-foreground/50'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Lock size={14} className={vaultType === 'secure' ? 'text-primary' : 'text-muted-foreground'} />
+            <span className="text-sm font-medium">Secure</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Encrypted, passphrase required</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setVaultType('open')}
+          className={`rounded-lg border-2 px-3 py-3 text-left transition-colors ${
+            vaultType === 'open'
+              ? 'border-blue-500 bg-blue-500/5'
+              : 'border-border hover:border-muted-foreground/50'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Globe size={14} className={vaultType === 'open' ? 'text-blue-500' : 'text-muted-foreground'} />
+            <span className="text-sm font-medium">Open</span>
+          </div>
+          <p className="text-xs text-muted-foreground">No password, auto-unlocks</p>
+        </button>
+      </div>
 
       <Field label="Vault name">
         <Input
-          placeholder="e.g. Personal, Work"
+          placeholder={vaultType === 'open' ? 'e.g. Shared, Family' : 'e.g. Personal, Work'}
           value={name}
           onChange={e => setName(e.target.value)}
           autoFocus
@@ -136,32 +198,42 @@ function NewVaultView({ onDone }: { onDone: (phrase: string) => void }) {
         />
       </Field>
 
-      <Field label="Passphrase">
-        <Input
-          type="password"
-          placeholder="Min. 8 characters"
-          value={passphrase}
-          onChange={e => setPassphrase(e.target.value)}
-          autoComplete="new-password"
-          className="w-full"
-        />
-      </Field>
+      {vaultType === 'secure' && (
+        <>
+          <Field label="Passphrase">
+            <Input
+              type="password"
+              placeholder="Min. 8 characters"
+              value={passphrase}
+              onChange={e => setPassphrase(e.target.value)}
+              autoComplete="new-password"
+              className="w-full"
+            />
+          </Field>
 
-      <Field label="Confirm passphrase">
-        <Input
-          type="password"
-          placeholder="Repeat passphrase"
-          value={confirm}
-          onChange={e => setConfirm(e.target.value)}
-          autoComplete="new-password"
-          className="w-full"
-        />
-      </Field>
+          <Field label="Confirm passphrase">
+            <Input
+              type="password"
+              placeholder="Repeat passphrase"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              className="w-full"
+            />
+          </Field>
+        </>
+      )}
+
+      {vaultType === 'open' && (
+        <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300">
+          Open vaults auto-unlock when the server starts. Anyone who can reach this app can register and log in. User accounts still have their own passwords.
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <Button type="submit" appearance="primary" className="w-full" disabled={loading}>
-        {loading ? 'Creating…' : 'Create vault'}
+        {loading ? 'Creating…' : `Create ${vaultType} vault`}
       </Button>
     </form>
   )
@@ -440,9 +512,13 @@ export default function SetupPage() {
           {view === 'new-vault' && (
             <NewVaultView
               onDone={(phrase) => {
-                setRecoveryPhrase(phrase)
-                setView('recovery-phrase')
                 loadVaults()
+                if (phrase) {
+                  setRecoveryPhrase(phrase)
+                  setView('recovery-phrase')
+                } else {
+                  setView('vaults')
+                }
               }}
             />
           )}

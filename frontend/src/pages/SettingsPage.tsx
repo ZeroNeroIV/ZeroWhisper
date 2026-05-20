@@ -449,79 +449,259 @@ function SecurityTab() {
 
 // ─── AI Tab ───────────────────────────────────────────────────────────────────
 
-interface AiStatus {
-  provider: string
-  model: string
+type Provider = 'openai' | 'gemini' | 'groq'
+
+interface AiSettings {
+  ai_provider: Provider
+  openai_api_key: string
+  openai_model: string
+  gemini_api_key: string
+  gemini_model: string
+  groq_api_key: string
+  local_whisper_model: string
   ai_ready: boolean
   transcription_ready: boolean
+  transcription_backend: string
+  model: string
+}
+
+const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1']
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']
+const GROQ_MODELS   = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+const WHISPER_SIZES = ['tiny', 'base', 'small', 'medium', 'large-v3']
+
+function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${ok ? 'bg-green-500' : 'bg-amber-400'}`} />
+      <span className="text-sm">{label}</span>
+    </div>
+  )
 }
 
 function AiTab() {
-  const [status, setStatus] = useState<AiStatus | null>(null)
+  const [cfg, setCfg] = useState<AiSettings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    api.get<AiStatus>('/api/whisper/ai-status')
-      .then(r => setStatus(r.data))
-      .catch(() => setStatus(null))
+  // Editable fields — keys left blank = keep current
+  const [provider, setProvider] = useState<Provider>('openai')
+  const [openaiKey, setOpenaiKey] = useState('')
+  const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini')
+  const [geminiKey, setGeminiKey] = useState('')
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash')
+  const [groqKey, setGroqKey] = useState('')
+  const [localModel, setLocalModel] = useState('small')
+
+  const load = () => {
+    setLoading(true)
+    api.get<AiSettings>('/api/ai-settings')
+      .then(r => {
+        setCfg(r.data)
+        setProvider(r.data.ai_provider)
+        setOpenaiModel(r.data.openai_model)
+        setGeminiModel(r.data.gemini_model)
+        setLocalModel(r.data.local_whisper_model)
+        // Don't pre-fill key fields — user types to update
+      })
+      .catch(() => toast.error('Failed to load AI settings.'))
       .finally(() => setLoading(false))
-  }, [])
+  }
 
-  const StatusBadge = ({ ok }: { ok: boolean }) => (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'}`} />
-      {ok ? 'Ready' : 'Not configured'}
-    </span>
-  )
+  useEffect(() => { load() }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const patch: Record<string, string | null> = {
+        ai_provider: provider,
+        openai_model: openaiModel,
+        gemini_model: geminiModel,
+        local_whisper_model: localModel,
+        // Only send key if user typed something; null = keep existing
+        openai_api_key: openaiKey || null,
+        gemini_api_key: geminiKey || null,
+        groq_api_key: groqKey || null,
+      }
+      const { data } = await api.put<AiSettings>('/api/ai-settings', patch)
+      setCfg(data)
+      setOpenaiKey('')
+      setGeminiKey('')
+      setGroqKey('')
+      toast.success('AI settings saved.')
+    } catch {
+      toast.error('Failed to save AI settings.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>
 
   return (
     <div className="space-y-6">
-      <Card className="p-4">
-        <h3 className="text-base font-semibold mb-1">AI Provider</h3>
-        <p className="text-sm text-muted-foreground mb-4">Configure via environment variables in your .env file.</p>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : !status ? (
-          <p className="text-sm text-red-600">Failed to load AI status.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 text-sm">
+
+      {/* Status */}
+      {cfg && (
+        <Card className="p-4">
+          <h3 className="text-base font-semibold mb-3">Status</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-muted-foreground mb-1">Provider</p>
-              <p className="font-medium capitalize">{status.provider}</p>
+              <p className="text-xs text-muted-foreground mb-1">Active model</p>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{cfg.model}</code>
             </div>
             <div>
-              <p className="text-muted-foreground mb-1">Model</p>
-              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{status.model}</code>
+              <p className="text-xs text-muted-foreground mb-1">Transcription</p>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{cfg.transcription_backend}</code>
             </div>
-            <div>
-              <p className="text-muted-foreground mb-1">Expense parsing</p>
-              <StatusBadge ok={status.ai_ready} />
+            <StatusBadge ok={cfg.ai_ready} label={cfg.ai_ready ? 'Expense parsing ready' : 'Expense parsing — no API key'} />
+            <StatusBadge ok={cfg.transcription_ready} label="Voice transcription ready" />
+          </div>
+        </Card>
+      )}
+
+      {/* Provider */}
+      <Card className="p-4 space-y-4">
+        <h3 className="text-base font-semibold">LLM Provider</h3>
+
+        <div className="grid grid-cols-3 gap-2">
+          {(['openai', 'gemini', 'groq'] as Provider[]).map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setProvider(p)}
+              className={`rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors capitalize ${
+                provider === p ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-muted-foreground/50'
+              }`}
+            >
+              {p === 'openai' ? 'OpenAI' : p === 'gemini' ? 'Gemini' : 'Groq'}
+            </button>
+          ))}
+        </div>
+
+        {/* OpenAI */}
+        {provider === 'openai' && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="openai-key">API Key</Label>
+              <Input
+                id="openai-key"
+                type="password"
+                placeholder={cfg?.openai_api_key || 'sk-… (leave blank to keep current)'}
+                value={openaiKey}
+                onChange={e => setOpenaiKey(e.target.value)}
+                autoComplete="off"
+              />
             </div>
-            <div>
-              <p className="text-muted-foreground mb-1">Voice transcription</p>
-              <StatusBadge ok={status.transcription_ready} />
+            <div className="space-y-1.5">
+              <Label htmlFor="openai-model">Model</Label>
+              <select
+                id="openai-model"
+                value={openaiModel}
+                onChange={e => setOpenaiModel(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {OPENAI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Gemini */}
+        {provider === 'gemini' && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="gemini-key">API Key</Label>
+              <Input
+                id="gemini-key"
+                type="password"
+                placeholder={cfg?.gemini_api_key || 'AIza… (leave blank to keep current)'}
+                value={geminiKey}
+                onChange={e => setGeminiKey(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gemini-model">Model</Label>
+              <select
+                id="gemini-model"
+                value={geminiModel}
+                onChange={e => setGeminiModel(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Groq */}
+        {provider === 'groq' && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Groq provides a free tier. Get a key at console.groq.com. Uses <code className="bg-muted px-1 rounded">llama-3.3-70b-versatile</code> for expense parsing and <code className="bg-muted px-1 rounded">whisper-large-v3</code> for transcription.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="groq-key">API Key</Label>
+              <Input
+                id="groq-key"
+                type="password"
+                placeholder={cfg?.groq_api_key || 'gsk_… (leave blank to keep current)'}
+                value={groqKey}
+                onChange={e => setGroqKey(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="groq-model">Model</Label>
+              <select
+                id="groq-model"
+                value={openaiModel}
+                onChange={e => setOpenaiModel(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
           </div>
         )}
       </Card>
 
-      <Card className="p-4">
-        <h3 className="text-base font-semibold mb-3">Configuration</h3>
-        <div className="space-y-3 text-sm">
-          <div>
-            <p className="font-medium mb-1">OpenAI (default)</p>
-            <code className="block bg-muted rounded px-3 py-2 text-xs leading-relaxed whitespace-pre">
-              {'AI_PROVIDER=openai\nOPENAI_API_KEY=sk-...\nWHISPER_MODEL=gpt-4o-mini'}
-            </code>
-          </div>
-          <div>
-            <p className="font-medium mb-1">Google Gemini</p>
-            <code className="block bg-muted rounded px-3 py-2 text-xs leading-relaxed whitespace-pre">
-              {'AI_PROVIDER=gemini\nGEMINI_API_KEY=AIza...\nGEMINI_MODEL=gemini-2.5-flash\nOPENAI_API_KEY=sk-...  # still needed for voice'}
-            </code>
-          </div>
+      {/* Voice transcription */}
+      <Card className="p-4 space-y-3">
+        <div>
+          <h3 className="text-base font-semibold">Voice Transcription</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Groq key → Groq (free). OpenAI key → OpenAI. Neither → local faster-whisper (offline, ~484 MB download on first use).
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="groq-transcription-key">Groq Key (for free cloud transcription)</Label>
+          <Input
+            id="groq-transcription-key"
+            type="password"
+            placeholder={cfg?.groq_api_key || 'gsk_… (leave blank to keep current)'}
+            value={groqKey}
+            onChange={e => setGroqKey(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="local-model">Local Whisper model (offline fallback)</Label>
+          <select
+            id="local-model"
+            value={localModel}
+            onChange={e => setLocalModel(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {WHISPER_SIZES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
       </Card>
+
+      <Button appearance="primary" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save Settings'}
+      </Button>
     </div>
   )
 }

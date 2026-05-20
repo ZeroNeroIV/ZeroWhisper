@@ -33,13 +33,17 @@ from uuid import uuid4
 from mnemonic import Mnemonic
 
 from app.config import settings
-from app.database import initialize_engine, create_db_and_tables
+from app.database import initialize_engine, initialize_plain_engine, create_db_and_tables
 
 mnemo = Mnemonic("english")
+
+VAULT_TYPE_SECURE = "secure"
+VAULT_TYPE_OPEN = "open"
 
 # In-memory state — never written to disk
 _active_vault_id: str | None = None
 _current_key: str | None = None
+_db_ready: bool = False
 
 
 class SetupState(str, Enum):
@@ -130,7 +134,7 @@ def get_state() -> SetupState:
 
 def is_db_ready() -> bool:
     """True when a vault is unlocked and the engine is ready."""
-    return _active_vault_id is not None and _current_key is not None
+    return _active_vault_id is not None and _db_ready
 
 
 def get_current_key() -> str | None:
@@ -153,6 +157,7 @@ def list_vaults() -> list[dict]:
         {
             "id": vid,
             "name": meta["name"],
+            "vault_type": meta.get("vault_type", VAULT_TYPE_SECURE),
             "created_at": meta.get("created_at"),
             "is_active": vid == _active_vault_id,
         }
@@ -204,6 +209,7 @@ def create_vault(name: str, passphrase: str) -> tuple[str, str]:
     state.setdefault("vaults", {})[vault_id] = {
         "name": name,
         "db_path": str(db_path),
+        "vault_type": VAULT_TYPE_SECURE,
         "salt_hex": salt.hex(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -211,7 +217,42 @@ def create_vault(name: str, passphrase: str) -> tuple[str, str]:
 
     _active_vault_id = vault_id
     _current_key = key_hex
+    _db_ready = True
     return vault_id, recovery_phrase
+
+
+def create_open_vault(name: str) -> str:
+    """
+    Create a new unencrypted open vault, activate it immediately, and return vault_id.
+    Open vaults require no passphrase and auto-unlock on server startup.
+    """
+    global _active_vault_id, _current_key, _db_ready
+
+    vault_id = str(uuid4())
+    state = _load_state()
+    is_first = not state.get("vaults")
+
+    if is_first:
+        db_path = Path(settings.db_path)
+    else:
+        db_path = Path(settings.db_path).parent / f"vault-{vault_id}.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    initialize_plain_engine(str(db_path))
+    create_db_and_tables()
+
+    state.setdefault("vaults", {})[vault_id] = {
+        "name": name,
+        "db_path": str(db_path),
+        "vault_type": VAULT_TYPE_OPEN,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_state(state)
+
+    _active_vault_id = vault_id
+    _current_key = None
+    _db_ready = True
+    return vault_id
 
 
 def unlock_vault(vault_id: str, passphrase: str) -> bool:
@@ -234,7 +275,37 @@ def unlock_vault(vault_id: str, passphrase: str) -> bool:
     initialize_engine(vault["db_path"], key_hex)
     _active_vault_id = vault_id
     _current_key = key_hex
+    _db_ready = True
     return True
+
+
+def unlock_open_vault(vault_id: str) -> bool:
+    """Unlock an open vault without passphrase. Returns False if vault not found or not open type."""
+    global _active_vault_id, _current_key, _db_ready
+
+    vault = get_vault(vault_id)
+    if not vault or vault.get("vault_type") != VAULT_TYPE_OPEN:
+        return False
+
+    initialize_plain_engine(vault["db_path"])
+    _active_vault_id = vault_id
+    _current_key = None
+    _db_ready = True
+    return True
+
+
+def auto_unlock_open_vaults() -> bool:
+    """
+    Auto-unlock the first open vault found. Called at server startup.
+    Returns True if a vault was unlocked (or one was already active).
+    """
+    if _db_ready:
+        return True
+    vaults = _load_state().get("vaults", {})
+    for vid, meta in vaults.items():
+        if meta.get("vault_type") == VAULT_TYPE_OPEN:
+            return unlock_open_vault(vid)
+    return False
 
 
 def recover_vault(vault_id: str, recovery_phrase: str, new_passphrase: str) -> str:
@@ -265,6 +336,7 @@ def recover_vault(vault_id: str, recovery_phrase: str, new_passphrase: str) -> s
 
     _active_vault_id = vault_id
     _current_key = new_key_hex
+    _db_ready = True
     return new_phrase
 
 
