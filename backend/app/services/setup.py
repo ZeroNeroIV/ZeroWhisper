@@ -1,28 +1,44 @@
 """
-First-run setup service.
+Multi-vault setup service.
 
-State machine: UNINITIALIZED → INITIALIZED
-State is stored in a small JSON file at settings.setup_state_path.
-The encryption key is derived from the passphrase via PBKDF2 and held only in memory.
-The salt used for derivation is stored in the state JSON so the key can be
-re-derived on restart when the user provides their passphrase again.
+Each vault is an independent SQLCipher-encrypted database.  Only one vault is
+active (unlocked) at a time; the encryption key is held only in memory.
+Vault metadata (name, db_path, derivation salt) is persisted to a JSON file.
+
+State file format:
+  {
+    "vaults": {
+      "<uuid>": {
+        "name": "Personal",
+        "db_path": "data/vault-<uuid>.db",
+        "salt_hex": "<hex>",
+        "created_at": "<iso8601>"
+      },
+      ...
+    }
+  }
+
+Migration: if the file contains the old single-vault format
+  {"state": "INITIALIZED", "salt_hex": "..."}
+it is automatically converted on first read.
 """
 import hashlib
 import json
 import os
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from uuid import uuid4
 
 from mnemonic import Mnemonic
-from passlib.context import CryptContext
 
 from app.config import settings
 from app.database import initialize_engine, create_db_and_tables
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 mnemo = Mnemonic("english")
 
-# In-memory key store — never written to disk
+# In-memory state — never written to disk
+_active_vault_id: str | None = None
 _current_key: str | None = None
 
 
@@ -31,35 +47,45 @@ class SetupState(str, Enum):
     INITIALIZED = "INITIALIZED"
 
 
+# ── State file helpers ──────────────────────────────────────────────────────────
+
 def _state_file() -> Path:
     path = Path(settings.setup_state_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def get_state() -> SetupState:
-    """Return the current setup state by reading the state JSON file."""
+def _load_state() -> dict:
+    """Load state JSON, migrating old single-vault format if present."""
     f = _state_file()
     if not f.exists():
-        return SetupState.UNINITIALIZED
+        return {"vaults": {}}
     data = json.loads(f.read_text())
-    return SetupState(data.get("state", "UNINITIALIZED"))
+    # Migrate old format: {state, salt_hex} → {vaults: {...}}
+    if "salt_hex" in data and "vaults" not in data:
+        vault_id = str(uuid4())
+        migrated: dict = {
+            "vaults": {
+                vault_id: {
+                    "name": "Default",
+                    "db_path": settings.db_path,
+                    "salt_hex": data["salt_hex"],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            }
+        }
+        f.write_text(json.dumps(migrated, indent=2))
+        return migrated
+    return data
 
 
-def _set_state(state: SetupState, extra: dict | None = None) -> None:
-    """Write state (and optional extra fields) to the state JSON file."""
-    existing: dict = {}
-    f = _state_file()
-    if f.exists():
-        existing = json.loads(f.read_text())
-    existing["state"] = state.value
-    if extra:
-        existing.update(extra)
-    f.write_text(json.dumps(existing))
+def _save_state(data: dict) -> None:
+    _state_file().write_text(json.dumps(data, indent=2))
 
+
+# ── Crypto helpers ──────────────────────────────────────────────────────────────
 
 def _derive_key(passphrase: str, salt: bytes | None = None) -> tuple[str, bytes]:
-    """Derive a 32-byte SQLCipher key from a passphrase using PBKDF2-SHA256."""
     if salt is None:
         salt = os.urandom(32)
     dk = hashlib.pbkdf2_hmac("sha256", passphrase.encode("utf-8"), salt, iterations=260000)
@@ -67,127 +93,204 @@ def _derive_key(passphrase: str, salt: bytes | None = None) -> tuple[str, bytes]
 
 
 def _key_to_mnemonic(key_hex: str) -> str:
-    """Convert a hex key to a BIP39 mnemonic phrase."""
-    key_bytes = bytes.fromhex(key_hex)
-    return mnemo.to_mnemonic(key_bytes)
+    return mnemo.to_mnemonic(bytes.fromhex(key_hex))
 
 
 def _mnemonic_to_key(phrase: str) -> str:
-    """Reconstruct key hex from BIP39 mnemonic."""
     if not mnemo.check(phrase):
         raise ValueError("Invalid BIP39 mnemonic phrase")
-    seed = mnemo.to_entropy(phrase)
-    return seed.hex()
+    return mnemo.to_entropy(phrase).hex()
 
 
-def get_current_key() -> str | None:
-    """Return the current in-memory encryption key, or None if not loaded."""
-    return _current_key
-
-
-def is_db_ready() -> bool:
-    """Return True if the DB is INITIALIZED and the key is loaded in memory."""
-    return get_state() == SetupState.INITIALIZED and _current_key is not None
-
-
-def initialize_db(passphrase: str) -> str:
+def _verify_key(db_path: str, key_hex: str) -> bool:
     """
-    Initialize the encrypted database for the first time.
-
-    Derives a 32-byte key from the passphrase via PBKDF2-SHA256, stores the
-    salt in the state JSON (so the key can be re-derived on restart), creates
-    the encrypted SQLite DB, runs table creation, and returns the BIP39 recovery
-    phrase.
-
-    The recovery phrase encodes the raw derived key bytes — it can reconstruct
-    the key without needing the original passphrase or salt.
-
-    Called only when state == UNINITIALIZED.
+    Open a raw pysqlcipher3 connection and read sqlite_master to confirm
+    the key decrypts page 1 correctly.  Never modifies global engine state.
     """
-    global _current_key
-
-    if get_state() == SetupState.INITIALIZED:
-        raise RuntimeError("Already initialized")
-
-    key_hex, salt = _derive_key(passphrase)
-    recovery_phrase = _key_to_mnemonic(key_hex)
-
-    # Ensure the DB parent directory exists
-    db_path = Path(settings.db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    initialize_engine(str(db_path), key_hex)
-    create_db_and_tables()
-
-    _current_key = key_hex
-    _set_state(SetupState.INITIALIZED, extra={"salt_hex": salt.hex()})
-
-    return recovery_phrase
-
-
-def unlock_db(passphrase: str) -> bool:
-    """
-    Unlock an already-initialized DB using the passphrase.
-
-    Re-derives the key using the stored salt, then opens the engine. Returns
-    True on success, False if the passphrase is wrong or state is invalid.
-    Called on each app restart before protected endpoints become available.
-    """
-    global _current_key
-
-    state_file = _state_file()
-    if not state_file.exists():
-        return False
-
-    data = json.loads(state_file.read_text())
-    if data.get("state") != SetupState.INITIALIZED.value:
-        return False
-
-    salt_hex = data.get("salt_hex")
-    if not salt_hex:
-        return False
-
-    salt = bytes.fromhex(salt_hex)
-    key_hex, _ = _derive_key(passphrase, salt)
-
+    import pysqlcipher3.dbapi2 as _psc  # type: ignore[import-untyped]
     try:
-        initialize_engine(settings.db_path, key_hex)
-        # Verify the key is correct by running a trivial query
-        from sqlalchemy import text
-        from app.database import get_engine
-        with get_engine().connect() as conn:
-            conn.execute(text("SELECT 1"))
-        _current_key = key_hex
+        conn = _psc.connect(db_path, check_same_thread=False)
+        conn.execute(f"PRAGMA key='{key_hex}'")
+        conn.execute("PRAGMA cipher='aes-256-cfb'")
+        conn.execute("PRAGMA kdf_iter=64000")
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        conn.close()
         return True
     except Exception:
         return False
 
 
-def recover_db(recovery_phrase: str, new_passphrase: str) -> str:
+# ── Public read API ─────────────────────────────────────────────────────────────
+
+def get_state() -> SetupState:
+    """UNINITIALIZED if no vaults exist on disk, INITIALIZED otherwise."""
+    state = _load_state()
+    return SetupState.INITIALIZED if state.get("vaults") else SetupState.UNINITIALIZED
+
+
+def is_db_ready() -> bool:
+    """True when a vault is unlocked and the engine is ready."""
+    return _active_vault_id is not None and _current_key is not None
+
+
+def get_current_key() -> str | None:
+    return _current_key
+
+
+def get_active_vault_id() -> str | None:
+    return _active_vault_id
+
+
+def get_vault(vault_id: str) -> dict | None:
+    """Return vault metadata dict or None if not found."""
+    return _load_state().get("vaults", {}).get(vault_id)
+
+
+def list_vaults() -> list[dict]:
+    """Return all vaults sorted by creation date, with is_active flag."""
+    vaults = _load_state().get("vaults", {})
+    result = [
+        {
+            "id": vid,
+            "name": meta["name"],
+            "created_at": meta.get("created_at"),
+            "is_active": vid == _active_vault_id,
+        }
+        for vid, meta in vaults.items()
+    ]
+    result.sort(key=lambda v: v.get("created_at") or "")
+    return result
+
+
+def verify_passphrase(passphrase: str) -> bool:
+    """Re-derive the key for the active vault and compare with in-memory key."""
+    if _current_key is None or _active_vault_id is None:
+        return False
+    vault = get_vault(_active_vault_id)
+    if not vault:
+        return False
+    salt = bytes.fromhex(vault["salt_hex"])
+    derived, _ = _derive_key(passphrase, salt)
+    return derived == _current_key
+
+
+# ── Vault management ────────────────────────────────────────────────────────────
+
+def create_vault(name: str, passphrase: str) -> tuple[str, str]:
     """
-    Recover access using the BIP39 recovery phrase and set a new passphrase.
+    Create a new encrypted vault, activate it immediately, and return
+    (vault_id, recovery_phrase).
+    """
+    global _active_vault_id, _current_key
 
-    Opens the DB with the key encoded in the recovery phrase, re-encrypts it
-    with a key derived from new_passphrase (via SQLCipher PRAGMA rekey), stores
-    the new salt, and returns the new BIP39 recovery phrase.
+    vault_id = str(uuid4())
+    key_hex, salt = _derive_key(passphrase)
+    recovery_phrase = _key_to_mnemonic(key_hex)
 
+    state = _load_state()
+    is_first = not state.get("vaults")
+
+    # First vault keeps the configured db_path for backward compat.
+    # Additional vaults get UUID-scoped filenames.
+    if is_first:
+        db_path = Path(settings.db_path)
+    else:
+        db_path = Path(settings.db_path).parent / f"vault-{vault_id}.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    initialize_engine(str(db_path), key_hex)
+    create_db_and_tables()
+
+    state.setdefault("vaults", {})[vault_id] = {
+        "name": name,
+        "db_path": str(db_path),
+        "salt_hex": salt.hex(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_state(state)
+
+    _active_vault_id = vault_id
+    _current_key = key_hex
+    return vault_id, recovery_phrase
+
+
+def unlock_vault(vault_id: str, passphrase: str) -> bool:
+    """
+    Unlock a specific vault and make it active.
+    Returns False if the vault does not exist or the passphrase is wrong.
+    """
+    global _active_vault_id, _current_key
+
+    vault = get_vault(vault_id)
+    if not vault:
+        return False
+
+    salt = bytes.fromhex(vault["salt_hex"])
+    key_hex, _ = _derive_key(passphrase, salt)
+
+    if not _verify_key(vault["db_path"], key_hex):
+        return False
+
+    initialize_engine(vault["db_path"], key_hex)
+    _active_vault_id = vault_id
+    _current_key = key_hex
+    return True
+
+
+def recover_vault(vault_id: str, recovery_phrase: str, new_passphrase: str) -> str:
+    """
+    Recover a vault using its BIP39 recovery phrase, re-key it with
+    new_passphrase, and return the new recovery phrase.
     Raises ValueError if the recovery phrase is invalid.
     """
-    global _current_key
+    global _active_vault_id, _current_key
 
-    old_key_hex = _mnemonic_to_key(recovery_phrase)  # raises ValueError if bad phrase
+    vault = get_vault(vault_id)
+    if not vault:
+        raise ValueError("Vault not found")
+
+    old_key_hex = _mnemonic_to_key(recovery_phrase)
     new_key_hex, new_salt = _derive_key(new_passphrase)
     new_phrase = _key_to_mnemonic(new_key_hex)
 
-    # Open DB with old key, then re-key it
-    initialize_engine(settings.db_path, old_key_hex)
+    initialize_engine(vault["db_path"], old_key_hex)
     from sqlalchemy import text
     from app.database import get_engine
     with get_engine().connect() as conn:
         conn.execute(text(f"PRAGMA rekey='{new_key_hex}'"))
 
-    # Persist new salt and state
-    _set_state(SetupState.INITIALIZED, extra={"salt_hex": new_salt.hex()})
+    state = _load_state()
+    state["vaults"][vault_id]["salt_hex"] = new_salt.hex()
+    _save_state(state)
 
+    _active_vault_id = vault_id
     _current_key = new_key_hex
     return new_phrase
+
+
+# ── Backward-compat wrappers (used by existing /setup/* endpoints) ──────────────
+
+def initialize_db(passphrase: str) -> str:
+    """First-time initialization — creates 'Default' vault. Returns recovery phrase."""
+    if get_state() == SetupState.INITIALIZED:
+        raise RuntimeError("Already initialized")
+    _, recovery_phrase = create_vault("Default", passphrase)
+    return recovery_phrase
+
+
+def unlock_db(passphrase: str) -> bool:
+    """Unlock the first registered vault (backward-compat)."""
+    vaults = _load_state().get("vaults", {})
+    if not vaults:
+        return False
+    first_id = next(iter(vaults))
+    return unlock_vault(first_id, passphrase)
+
+
+def recover_db(recovery_phrase: str, new_passphrase: str) -> str:
+    """Recover the first registered vault (backward-compat)."""
+    vaults = _load_state().get("vaults", {})
+    if not vaults:
+        raise ValueError("No vaults found")
+    first_id = next(iter(vaults))
+    return recover_vault(first_id, recovery_phrase, new_passphrase)

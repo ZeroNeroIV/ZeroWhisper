@@ -4,20 +4,16 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { type AxiosError } from 'axios'
+import {
+  Button,
+  Input,
+  Field,
+  Card,
+  TabList,
+  Tab,
+} from '@fluentui/react-components'
 
 import { useAuth } from '@/contexts/AuthContext'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-} from '@/components/ui/form'
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 
@@ -55,7 +51,11 @@ function LoginForm() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<LoginFormData>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { username: '', password: '' },
   })
@@ -71,61 +71,51 @@ function LoginForm() {
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="username"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Username</FormLabel>
-              <FormControl>
-                <Input placeholder="your_username" autoComplete="username" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Field
+        label="Username"
+        validationMessage={errors.username?.message}
+        validationState={errors.username ? 'error' : 'none'}
+      >
+        <Input placeholder="your_username" autoComplete="username" {...register('username')} />
+      </Field>
+
+      <Field
+        label="Password"
+        validationMessage={errors.password?.message}
+        validationState={errors.password ? 'error' : 'none'}
+      >
+        <Input
+          type="password"
+          placeholder="••••••••"
+          autoComplete="current-password"
+          {...register('password')}
         />
+      </Field>
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      {error && (
+        <p className="text-sm font-medium text-red-600">{error}</p>
+      )}
 
-        {error && (
-          <p className="text-sm font-medium text-destructive">{error}</p>
-        )}
-
-        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? 'Signing in…' : 'Sign in'}
-        </Button>
-      </form>
-    </Form>
+      <Button type="submit" appearance="primary" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? 'Signing in…' : 'Sign in'}
+      </Button>
+    </form>
   )
 }
 
 // ── Register sub-form ─────────────────────────────────────────────────────────
 
 function RegisterForm() {
-  const { register, login } = useAuth()
+  const { register: registerUser, login } = useAuth()
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<RegisterFormData>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { username: '', email: '', password: '' },
   })
@@ -133,7 +123,7 @@ function RegisterForm() {
   const onSubmit = async (values: RegisterFormData) => {
     setError(null)
     try {
-      await register(values.username, values.email, values.password)
+      await registerUser(values.username, values.email, values.password)
       await login(values.username, values.password)
       navigate('/dashboard', { replace: true })
     } catch (err) {
@@ -142,114 +132,87 @@ function RegisterForm() {
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="username"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Username</FormLabel>
-              <FormControl>
-                <Input placeholder="your_username" autoComplete="username" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Field
+        label="Username"
+        validationMessage={errors.username?.message}
+        validationState={errors.username ? 'error' : 'none'}
+      >
+        <Input placeholder="your_username" autoComplete="username" {...register('username')} />
+      </Field>
+
+      <Field
+        label="Email"
+        validationMessage={errors.email?.message}
+        validationState={errors.email ? 'error' : 'none'}
+      >
+        <Input
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
+          {...register('email')}
         />
+      </Field>
 
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input
-                  type="email"
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+      <Field
+        label="Password"
+        validationMessage={errors.password?.message}
+        validationState={errors.password ? 'error' : 'none'}
+      >
+        <Input
+          type="password"
+          placeholder="••••••••"
+          autoComplete="new-password"
+          {...register('password')}
         />
+      </Field>
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      {error && (
+        <p className="text-sm font-medium text-red-600">{error}</p>
+      )}
 
-        {error && (
-          <p className="text-sm font-medium text-destructive">{error}</p>
-        )}
-
-        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? 'Creating account…' : 'Create account'}
-        </Button>
-      </form>
-    </Form>
+      <Button type="submit" appearance="primary" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? 'Creating account…' : 'Create account'}
+      </Button>
+    </form>
   )
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
+  const [activeTab, setActiveTab] = useState('login')
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">ZeroWhisper</CardTitle>
-            <p className="text-sm text-muted-foreground">
+        <Card className="p-6">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold">ZeroWhisper</h1>
+            <p className="text-sm text-muted-foreground mt-1">
               Personal finance, made quiet.
             </p>
-          </CardHeader>
+          </div>
 
-          <CardContent>
-            <Tabs defaultValue="login">
-              <TabsList className="w-full mb-6">
-                <TabsTrigger value="login" className="flex-1">
-                  Sign in
-                </TabsTrigger>
-                <TabsTrigger value="register" className="flex-1">
-                  Register
-                </TabsTrigger>
-              </TabsList>
+          <TabList
+            selectedValue={activeTab}
+            onTabSelect={(_, d) => setActiveTab(d.value as string)}
+            className="w-full mb-6"
+          >
+            <Tab value="login" className="flex-1">Sign in</Tab>
+            <Tab value="register" className="flex-1">Register</Tab>
+          </TabList>
 
-              <TabsContent value="login">
-                <LoginForm />
-              </TabsContent>
+          {activeTab === 'login' && <LoginForm />}
+          {activeTab === 'register' && <RegisterForm />}
 
-              <TabsContent value="register">
-                <RegisterForm />
-              </TabsContent>
-            </Tabs>
-
-            <p className="mt-6 text-center text-xs text-muted-foreground">
-              First time?{' '}
-              <Link to="/setup" className="font-medium underline underline-offset-4 hover:text-foreground">
-                Initialize the database
-              </Link>{' '}
-              first.
-            </p>
-          </CardContent>
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            First time?{' '}
+            <Link to="/setup" className="font-medium underline underline-offset-4 hover:text-foreground">
+              Initialize the database
+            </Link>{' '}
+            first.
+          </p>
         </Card>
       </div>
     </div>

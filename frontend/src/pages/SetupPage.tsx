@@ -1,28 +1,103 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Card, Button, Input, Field } from '@fluentui/react-components'
+import { Lock, Unlock, Plus, ShieldCheck } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type SetupStatus =
-  | { state: 'UNINITIALIZED' }
-  | { state: 'INITIALIZED'; db_ready: boolean }
+interface Vault {
+  id: string
+  name: string
+  created_at: string
+  is_active: boolean
+}
 
-type View = 'loading' | 'initialize' | 'recovery-phrase' | 'unlock' | 'recover' | 'ready'
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
+type View =
+  | 'loading'
+  | 'vaults'
+  | 'new-vault'
+  | 'unlock-vault'
+  | 'recovery-phrase'
+  | 'recover'
 
 function getErrorMessage(err: unknown): string {
   const e = err as { response?: { data?: { detail?: string } }; message?: string }
   return e?.response?.data?.detail ?? e?.message ?? 'An unexpected error occurred.'
 }
 
-// ── Sub-views ──────────────────────────────────────────────────────────────────
+// ── Vault List ─────────────────────────────────────────────────────────────────
 
-function InitializeView({ onDone }: { onDone: (phrase: string) => void }) {
+function VaultsView({
+  vaults,
+  onUnlock,
+  onNew,
+}: {
+  vaults: Vault[]
+  onUnlock: (vault: Vault) => void
+  onNew: () => void
+}) {
+  const navigate = useNavigate()
+
+  return (
+    <div className="space-y-3">
+      {vaults.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          No vaults yet. Create one to get started.
+        </p>
+      )}
+
+      {vaults.map((vault) => (
+        <div
+          key={vault.id}
+          className="flex items-center gap-3 rounded-lg border px-4 py-3"
+        >
+          {vault.is_active
+            ? <Unlock size={16} className="text-green-600 shrink-0" />
+            : <Lock size={16} className="text-muted-foreground shrink-0" />
+          }
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{vault.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(vault.created_at).toLocaleDateString()}
+            </p>
+          </div>
+          {vault.is_active ? (
+            <Button
+              size="small"
+              appearance="primary"
+              onClick={() => navigate('/login')}
+            >
+              Open
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              appearance="outline"
+              onClick={() => onUnlock(vault)}
+            >
+              Unlock
+            </Button>
+          )}
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={onNew}
+        className="w-full rounded-lg border-2 border-dashed border-muted-foreground/30 px-4 py-3 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+      >
+        <Plus size={15} />
+        New vault
+      </button>
+    </div>
+  )
+}
+
+// ── New Vault ──────────────────────────────────────────────────────────────────
+
+function NewVaultView({ onDone }: { onDone: (phrase: string) => void }) {
+  const [name, setName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -31,17 +106,12 @@ function InitializeView({ onDone }: { onDone: (phrase: string) => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (passphrase.length < 8) {
-      setError('Passphrase must be at least 8 characters.')
-      return
-    }
-    if (passphrase !== confirm) {
-      setError('Passphrases do not match.')
-      return
-    }
+    if (!name.trim()) { setError('Vault name is required.'); return }
+    if (passphrase.length < 8) { setError('Passphrase must be at least 8 characters.'); return }
+    if (passphrase !== confirm) { setError('Passphrases do not match.'); return }
     setLoading(true)
     try {
-      const { data } = await api.post('/setup/initialize', { passphrase })
+      const { data } = await api.post('/setup/vaults', { name: name.trim(), passphrase })
       onDone(data.recovery_phrase)
     } catch (err) {
       setError(getErrorMessage(err))
@@ -53,40 +123,117 @@ function InitializeView({ onDone }: { onDone: (phrase: string) => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Choose a strong passphrase to encrypt your database. You will need it every time the
-        server restarts.
+        Each vault is an independent encrypted database with its own passphrase.
       </p>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Passphrase</label>
+      <Field label="Vault name">
+        <Input
+          placeholder="e.g. Personal, Work"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          autoFocus
+          className="w-full"
+        />
+      </Field>
+
+      <Field label="Passphrase">
         <Input
           type="password"
           placeholder="Min. 8 characters"
           value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
+          onChange={e => setPassphrase(e.target.value)}
           autoComplete="new-password"
+          className="w-full"
         />
-      </div>
+      </Field>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Confirm passphrase</label>
+      <Field label="Confirm passphrase">
         <Input
           type="password"
           placeholder="Repeat passphrase"
           value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
+          onChange={e => setConfirm(e.target.value)}
           autoComplete="new-password"
+          className="w-full"
         />
-      </div>
+      </Field>
 
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Initializing…' : 'Initialize database'}
+      <Button type="submit" appearance="primary" className="w-full" disabled={loading}>
+        {loading ? 'Creating…' : 'Create vault'}
       </Button>
     </form>
   )
 }
+
+// ── Unlock Vault ───────────────────────────────────────────────────────────────
+
+function UnlockVaultView({
+  vault,
+  onDone,
+  onRecover,
+}: {
+  vault: Vault
+  onDone: () => void
+  onRecover: () => void
+}) {
+  const [passphrase, setPassphrase] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await api.post(`/setup/vaults/${vault.id}/unlock`, { passphrase })
+      navigate('/login')
+      onDone()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Enter the passphrase for <span className="font-medium text-foreground">"{vault.name}"</span>.
+      </p>
+
+      <Field label="Passphrase">
+        <Input
+          type="password"
+          placeholder="Your vault passphrase"
+          value={passphrase}
+          onChange={e => setPassphrase(e.target.value)}
+          autoComplete="current-password"
+          autoFocus
+          className="w-full"
+        />
+      </Field>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <Button type="submit" appearance="primary" className="w-full" disabled={loading}>
+        {loading ? 'Unlocking…' : 'Unlock'}
+      </Button>
+
+      <button
+        type="button"
+        className="w-full text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        onClick={onRecover}
+      >
+        Forgot passphrase? Recover with recovery phrase
+      </button>
+    </form>
+  )
+}
+
+// ── Recovery Phrase Display ────────────────────────────────────────────────────
 
 function RecoveryPhraseView({ phrase, onContinue }: { phrase: string; onContinue: () => void }) {
   const [copied, setCopied] = useState(false)
@@ -100,8 +247,7 @@ function RecoveryPhraseView({ phrase, onContinue }: { phrase: string; onContinue
   return (
     <div className="space-y-4">
       <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300">
-        Save this recovery phrase now — it will not be shown again. Store it somewhere safe
-        offline.
+        Save this recovery phrase — it will <strong>not</strong> be shown again. Store it somewhere safe offline.
       </div>
 
       <div
@@ -112,64 +258,28 @@ function RecoveryPhraseView({ phrase, onContinue }: { phrase: string; onContinue
         {phrase}
       </div>
 
-      <Button variant="outline" size="sm" className="w-full" onClick={handleCopy}>
+      <Button appearance="outline" className="w-full" onClick={handleCopy}>
         {copied ? 'Copied!' : 'Copy to clipboard'}
       </Button>
 
-      <Button className="w-full" onClick={onContinue}>
+      <Button appearance="primary" className="w-full" onClick={onContinue}>
         I've saved my recovery phrase — continue
       </Button>
     </div>
   )
 }
 
-function UnlockView({ onDone }: { onDone: () => void }) {
-  const [passphrase, setPassphrase] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+// ── Recover Vault ──────────────────────────────────────────────────────────────
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      await api.post('/setup/unlock', { passphrase })
-      onDone()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        The database exists but the key is not loaded. Enter your passphrase to unlock it.
-      </p>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Passphrase</label>
-        <Input
-          type="password"
-          placeholder="Your database passphrase"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          autoComplete="current-password"
-          autoFocus
-        />
-      </div>
-
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Unlocking…' : 'Unlock database'}
-      </Button>
-    </form>
-  )
-}
-
-function RecoverView({ onDone }: { onDone: (phrase: string) => void }) {
+function RecoverView({
+  vault,
+  onDone,
+  onBack,
+}: {
+  vault: Vault | null
+  onDone: (phrase: string) => void
+  onBack: () => void
+}) {
   const [recoveryPhrase, setRecoveryPhrase] = useState('')
   const [newPassphrase, setNewPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -179,21 +289,16 @@ function RecoverView({ onDone }: { onDone: (phrase: string) => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (newPassphrase.length < 8) {
-      setError('New passphrase must be at least 8 characters.')
-      return
-    }
-    if (newPassphrase !== confirm) {
-      setError('Passphrases do not match.')
-      return
-    }
+    if (newPassphrase.length < 8) { setError('New passphrase must be at least 8 characters.'); return }
+    if (newPassphrase !== confirm) { setError('Passphrases do not match.'); return }
     setLoading(true)
     try {
-      const { data } = await api.post('/setup/recover', {
+      const url = vault ? `/setup/vaults/${vault.id}/recover` : '/setup/recover'
+      const { data } = await api.post(url, {
         recovery_phrase: recoveryPhrase.trim(),
         new_passphrase: newPassphrase,
       })
-      onDone(data.new_recovery_phrase)
+      onDone(data.new_recovery_phrase ?? data.recovery_phrase)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -207,169 +312,174 @@ function RecoverView({ onDone }: { onDone: (phrase: string) => void }) {
         Enter your 24-word BIP39 recovery phrase and set a new passphrase.
       </p>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Recovery phrase (24 words)</label>
+      <Field label="Recovery phrase (24 words)">
         <textarea
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono min-h-[96px] resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="word1 word2 word3 … word24"
           value={recoveryPhrase}
-          onChange={(e) => setRecoveryPhrase(e.target.value)}
+          onChange={e => setRecoveryPhrase(e.target.value)}
         />
-      </div>
+      </Field>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">New passphrase</label>
+      <Field label="New passphrase">
         <Input
           type="password"
           placeholder="Min. 8 characters"
           value={newPassphrase}
-          onChange={(e) => setNewPassphrase(e.target.value)}
+          onChange={e => setNewPassphrase(e.target.value)}
           autoComplete="new-password"
+          className="w-full"
         />
-      </div>
+      </Field>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Confirm new passphrase</label>
+      <Field label="Confirm new passphrase">
         <Input
           type="password"
           placeholder="Repeat passphrase"
           value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
+          onChange={e => setConfirm(e.target.value)}
           autoComplete="new-password"
+          className="w-full"
         />
-      </div>
+      </Field>
 
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Recovering…' : 'Recover database'}
+      <Button type="submit" appearance="primary" className="w-full" disabled={loading}>
+        {loading ? 'Recovering…' : 'Recover vault'}
       </Button>
-    </form>
-  )
-}
 
-function ReadyView() {
-  return (
-    <div className="space-y-4 text-center">
-      <p className="text-sm text-muted-foreground">
-        The database is unlocked and ready.
-      </p>
-      <Link to="/login">
-        <Button className="w-full">Go to login</Button>
-      </Link>
-    </div>
+      <button
+        type="button"
+        className="w-full text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        onClick={onBack}
+      >
+        Back
+      </button>
+    </form>
   )
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
-  const navigate = useNavigate()
   const [view, setView] = useState<View>('loading')
+  const [vaults, setVaults] = useState<Vault[]>([])
+  const [selectedVault, setSelectedVault] = useState<Vault | null>(null)
   const [recoveryPhrase, setRecoveryPhrase] = useState('')
   const [statusError, setStatusError] = useState<string | null>(null)
 
-  useEffect(() => {
-    api
-      .get<SetupStatus>('/setup/status')
-      .then(({ data }) => {
-        if (data.state === 'UNINITIALIZED') {
-          setView('initialize')
-        } else if (data.db_ready) {
-          setView('ready')
-        } else {
-          setView('unlock')
-        }
-      })
-      .catch(() => setStatusError('Could not reach the server. Is the backend running?'))
-  }, [])
+  const loadVaults = async () => {
+    try {
+      const [statusRes, vaultsRes] = await Promise.all([
+        api.get<{ state: string; db_ready: boolean; active_vault_id: string | null }>('/setup/status'),
+        api.get<{ vaults: Vault[] }>('/setup/vaults'),
+      ])
+      const enriched = vaultsRes.data.vaults.map(v => ({
+        ...v,
+        is_active: v.id === statusRes.data.active_vault_id,
+      }))
+      setVaults(enriched)
+      setView('vaults')
+    } catch {
+      setStatusError('Could not reach the server. Is the backend running?')
+    }
+  }
 
-  const title: Record<View, string> = {
+  useEffect(() => { loadVaults() }, [])
+
+  const titles: Record<View, string> = {
     loading: 'ZeroWhisper',
-    initialize: 'Initialize database',
-    'recovery-phrase': 'Your recovery phrase',
-    unlock: 'Unlock database',
-    recover: 'Recover database',
-    ready: 'Database ready',
+    vaults: 'Vaults',
+    'new-vault': 'New vault',
+    'unlock-vault': 'Unlock vault',
+    'recovery-phrase': 'Recovery phrase',
+    recover: 'Recover vault',
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{title[view]}</CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            {statusError && (
-              <p className="text-sm text-destructive text-center">{statusError}</p>
-            )}
-
-            {view === 'loading' && !statusError && (
-              <p className="text-sm text-muted-foreground text-center">Checking status…</p>
-            )}
-
-            {view === 'initialize' && (
-              <InitializeView
-                onDone={(phrase) => {
-                  setRecoveryPhrase(phrase)
-                  setView('recovery-phrase')
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-6">
+            {view !== 'vaults' && view !== 'loading' && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground mr-auto"
+                onClick={() => {
+                  if (view === 'recover') {
+                    setView(selectedVault ? 'unlock-vault' : 'vaults')
+                  } else {
+                    setView('vaults')
+                  }
                 }}
-              />
+              >
+                ← Back
+              </button>
             )}
+            <h1 className="text-xl font-bold text-center flex-1">{titles[view]}</h1>
+            {view === 'vaults' && <ShieldCheck size={18} className="text-muted-foreground" />}
+          </div>
 
-            {view === 'recovery-phrase' && (
-              <RecoveryPhraseView
-                phrase={recoveryPhrase}
-                onContinue={() => navigate('/login')}
-              />
-            )}
+          {statusError && (
+            <p className="text-sm text-red-600 text-center">{statusError}</p>
+          )}
 
-            {view === 'unlock' && (
-              <>
-                <UnlockView onDone={() => navigate('/login')} />
-                <button
-                  type="button"
-                  className="mt-4 w-full text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                  onClick={() => setView('recover')}
-                >
-                  Forgot passphrase? Recover with recovery phrase
-                </button>
-              </>
-            )}
+          {view === 'loading' && !statusError && (
+            <p className="text-sm text-muted-foreground text-center">Checking status…</p>
+          )}
 
-            {view === 'recover' && (
-              <>
-                <RecoverView
-                  onDone={(phrase) => {
-                    setRecoveryPhrase(phrase)
-                    setView('recovery-phrase')
-                  }}
-                />
-                <button
-                  type="button"
-                  className="mt-4 w-full text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                  onClick={() => setView('unlock')}
-                >
-                  Back to unlock
-                </button>
-              </>
-            )}
+          {view === 'vaults' && (
+            <VaultsView
+              vaults={vaults}
+              onUnlock={(vault) => { setSelectedVault(vault); setView('unlock-vault') }}
+              onNew={() => setView('new-vault')}
+            />
+          )}
 
-            {view === 'ready' && <ReadyView />}
+          {view === 'new-vault' && (
+            <NewVaultView
+              onDone={(phrase) => {
+                setRecoveryPhrase(phrase)
+                setView('recovery-phrase')
+                loadVaults()
+              }}
+            />
+          )}
 
-            {view !== 'recovery-phrase' && (
-              <p className="mt-6 text-center text-xs text-muted-foreground">
-                <Link
-                  to="/login"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  Back to login
-                </Link>
-              </p>
-            )}
-          </CardContent>
+          {view === 'unlock-vault' && selectedVault && (
+            <UnlockVaultView
+              vault={selectedVault}
+              onDone={() => loadVaults()}
+              onRecover={() => setView('recover')}
+            />
+          )}
+
+          {view === 'recovery-phrase' && (
+            <RecoveryPhraseView
+              phrase={recoveryPhrase}
+              onContinue={() => setView('vaults')}
+            />
+          )}
+
+          {view === 'recover' && (
+            <RecoverView
+              vault={selectedVault}
+              onDone={(phrase) => {
+                setRecoveryPhrase(phrase)
+                setView('recovery-phrase')
+              }}
+              onBack={() => setView(selectedVault ? 'unlock-vault' : 'vaults')}
+            />
+          )}
+
+          {view !== 'recovery-phrase' && (
+            <p className="mt-6 text-center text-xs text-muted-foreground">
+              <Link to="/login" className="underline underline-offset-4 hover:text-foreground">
+                Back to login
+              </Link>
+            </p>
+          )}
         </Card>
       </div>
     </div>

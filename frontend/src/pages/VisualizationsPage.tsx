@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/lib/api'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { TabList, Tab, Card, Button, Input, Tooltip as FluentTooltip } from '@fluentui/react-components'
+import { Play, Pause, Timer } from 'lucide-react'
 import {
   ComposedChart,
   Bar,
@@ -72,7 +72,7 @@ function LoadingState() {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="flex items-center justify-center h-64 text-destructive">
+    <div className="flex items-center justify-center h-64 text-red-600">
       {message}
     </div>
   )
@@ -331,79 +331,104 @@ const TAB_DESCRIPTIONS: Record<TabKey, string> = {
   'net-worth': 'Cumulative net worth over time',
 }
 
+const TAB_TITLES: Record<TabKey, string> = {
+  'cash-flow': 'Cash Flow',
+  sankey: 'Income vs. Spending',
+  'burn-rate': 'Burn Rate Heatmap',
+  'net-worth': 'Net Worth Trend',
+}
+
+const TAB_KEYS = Object.keys(TAB_LABELS) as TabKey[]
+
 export default function VisualizationsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('cash-flow')
-  // Track which tabs have been visited so we lazy-mount their data fetchers
   const [visited, setVisited] = useState<Set<TabKey>>(new Set(['cash-flow']))
 
-  const handleTabChange = useCallback((value: string) => {
-    const tab = value as TabKey
+  const [autoPlay, setAutoPlay] = useState(false)
+  const [interval, setIntervalSecs] = useState(5)
+  const [intervalInput, setIntervalInput] = useState('5')
+  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const goToTab = useCallback((tab: TabKey) => {
     setActiveTab(tab)
-    setVisited((prev) => new Set([...prev, tab]))
+    setVisited(prev => new Set([...prev, tab]))
   }, [])
 
+  const handleTabChange = useCallback((_: unknown, d: { value: unknown }) => {
+    goToTab(d.value as TabKey)
+  }, [goToTab])
+
+  // Auto-advance timer
+  useEffect(() => {
+    if (!autoPlay) {
+      if (intervalRef.current) clearTimeout(intervalRef.current)
+      return
+    }
+    intervalRef.current = setTimeout(() => {
+      setActiveTab(prev => {
+        const idx = TAB_KEYS.indexOf(prev)
+        const next = TAB_KEYS[(idx + 1) % TAB_KEYS.length]
+        setVisited(v => new Set([...v, next]))
+        return next
+      })
+    }, interval * 1000)
+    return () => { if (intervalRef.current) clearTimeout(intervalRef.current) }
+  }, [autoPlay, activeTab, interval])
+
+  const handleIntervalChange = (val: string) => {
+    setIntervalInput(val)
+    const n = parseInt(val, 10)
+    if (!isNaN(n) && n >= 1 && n <= 60) setIntervalSecs(n)
+  }
+
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Visualizations</h1>
-        <p className="text-muted-foreground mt-1">
-          {TAB_DESCRIPTIONS[activeTab]}
-        </p>
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Visualizations</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">{TAB_DESCRIPTIONS[activeTab]}</p>
+        </div>
+
+        {/* Auto-play controls */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Timer size={15} className="text-muted-foreground" />
+          <Input
+            type="number"
+            value={intervalInput}
+            onChange={e => handleIntervalChange(e.target.value)}
+            min={1}
+            max={60}
+            style={{ width: '60px' }}
+            contentAfter={<span className="text-xs text-muted-foreground">s</span>}
+            disabled={autoPlay}
+          />
+          <FluentTooltip content={autoPlay ? 'Stop auto-advance' : 'Auto-advance tabs'} relationship="label">
+            <Button
+              appearance={autoPlay ? 'primary' : 'outline'}
+              icon={autoPlay ? <Pause size={15} /> : <Play size={15} />}
+              onClick={() => setAutoPlay(p => !p)}
+            >
+              {autoPlay ? 'Stop' : 'Auto'}
+            </Button>
+          </FluentTooltip>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="mb-6">
-          {(Object.keys(TAB_LABELS) as TabKey[]).map((key) => (
-            <TabsTrigger key={key} value={key}>
-              {TAB_LABELS[key]}
-            </TabsTrigger>
+      <div className="overflow-x-auto -mx-1 px-1 mb-4">
+        <TabList selectedValue={activeTab} onTabSelect={handleTabChange} className="flex-nowrap">
+          {TAB_KEYS.map((key) => (
+            <Tab key={key} value={key}>{TAB_LABELS[key]}</Tab>
           ))}
-        </TabsList>
+        </TabList>
+      </div>
 
-        <TabsContent value="cash-flow">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cash Flow</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {visited.has('cash-flow') && <CashFlowTab />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="sankey">
-          <Card>
-            <CardHeader>
-              <CardTitle>Income vs. Spending</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {visited.has('sankey') && <SankeyTab />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="burn-rate">
-          <Card>
-            <CardHeader>
-              <CardTitle>Burn Rate Heatmap</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {visited.has('burn-rate') && <HeatmapTab />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="net-worth">
-          <Card>
-            <CardHeader>
-              <CardTitle>Net Worth Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {visited.has('net-worth') && <NetWorthTab />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card className="p-4">
+        <h2 className="text-base font-semibold mb-4">{TAB_TITLES[activeTab]}</h2>
+        {activeTab === 'cash-flow' && visited.has('cash-flow') && <CashFlowTab />}
+        {activeTab === 'sankey' && visited.has('sankey') && <SankeyTab />}
+        {activeTab === 'burn-rate' && visited.has('burn-rate') && <HeatmapTab />}
+        {activeTab === 'net-worth' && visited.has('net-worth') && <NetWorthTab />}
+      </Card>
     </div>
   )
 }

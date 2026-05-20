@@ -3,13 +3,13 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import {
   Dialog,
-  DialogContent,
-  DialogHeader,
+  DialogSurface,
+  DialogBody,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+  DialogContent,
+  DialogActions,
+  Button,
+} from '@fluentui/react-components'
 import { Upload } from 'lucide-react'
 
 interface ImportResult {
@@ -82,85 +82,89 @@ export function CsvImportDialog({ open, onOpenChange, onImported }: CsvImportDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(_, data) => { if (!data.open) handleClose() }}>
+      <DialogSurface>
+        <DialogBody>
           <DialogTitle>Import Transactions from CSV</DialogTitle>
-          <DialogDescription>
-            Upload a CSV file to import multiple transactions at once.
-          </DialogDescription>
-        </DialogHeader>
+          <DialogContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Upload a CSV file to import multiple transactions at once.
+            </p>
 
-        <div className="space-y-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => window.open('/api/imports/template')}
-          >
-            Download Template
-          </Button>
+            <div className="space-y-4">
+              <Button
+                appearance="outline"
+                onClick={() => window.open('/api/imports/template')}
+              >
+                Download Template
+              </Button>
 
-          <div
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-              dragging
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/25 hover:border-primary/50'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-            {selectedFile ? (
-              <p className="text-sm font-medium">{selectedFile.name}</p>
-            ) : (
-              <>
-                <p className="text-sm font-medium">Click to upload or drag and drop</p>
-                <p className="text-xs text-muted-foreground mt-1">CSV files only</p>
-              </>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-            />
-          </div>
+              <div
+                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                  dragging
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted-foreground/25 hover:border-primary/50'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                {selectedFile ? (
+                  <p className="text-sm font-medium">{selectedFile.name}</p>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium">Click to upload or drag and drop</p>
+                    <p className="text-xs text-muted-foreground mt-1">CSV files only</p>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                />
+              </div>
 
-          {result && (
-            <div className="rounded-md border p-4 space-y-2">
-              <p className="text-sm font-medium text-green-700">
-                Successfully imported {result.imported} transaction{result.imported !== 1 ? 's' : ''}
-              </p>
-              {result.errors.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-red-700 mb-1">
-                    {result.errors.length} error{result.errors.length !== 1 ? 's' : ''}:
+              {result && (
+                <div className="rounded-md border p-4 space-y-2">
+                  <p className="text-sm font-medium text-green-700">
+                    Successfully imported {result.imported} transaction{result.imported !== 1 ? 's' : ''}
                   </p>
-                  <ul className="text-xs text-red-600 space-y-1">
-                    {result.errors.map((err) => (
-                      <li key={err.row}>
-                        Row {err.row}: {err.message}
-                      </li>
-                    ))}
-                  </ul>
+                  {result.errors.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-red-700 mb-1">
+                        {result.errors.length} error{result.errors.length !== 1 ? 's' : ''}:
+                      </p>
+                      <ul className="text-xs text-red-600 space-y-1">
+                        {result.errors.map((err) => (
+                          <li key={err.row}>
+                            Row {err.row}: {err.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={importing}>
-            Close
-          </Button>
-          <Button type="button" onClick={handleImport} disabled={importing || !selectedFile}>
-            {importing ? 'Importing...' : 'Import'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+          </DialogContent>
+          <DialogActions>
+            <Button appearance="outline" onClick={handleClose} disabled={importing}>
+              Close
+            </Button>
+            <Button
+              appearance="primary"
+              onClick={handleImport}
+              disabled={importing || !selectedFile}
+            >
+              {importing ? 'Importing...' : 'Import'}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
     </Dialog>
   )
 }

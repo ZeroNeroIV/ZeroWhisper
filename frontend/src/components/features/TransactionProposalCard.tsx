@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Card, Button, Badge } from '@fluentui/react-components'
 import { CheckCircle2 } from 'lucide-react'
 import type { WhisperResponse } from '@/hooks/useWhisper'
 
@@ -37,8 +35,8 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
   }
 
   return (
-    <Card className="max-w-md w-full">
-      <CardContent className="p-4 space-y-3">
+    <Card className="max-w-md w-full p-4">
+      <div className="space-y-3">
         {/* Header */}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold select-none">
@@ -70,7 +68,7 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">Category</span>
-            <Badge variant="secondary" className="text-xs">{proposal.category}</Badge>
+            <Badge appearance="tint" className="text-xs">{proposal.category}</Badge>
           </div>
           <div className="flex items-start justify-between gap-2">
             <span className="text-xs text-muted-foreground shrink-0">Description</span>
@@ -89,16 +87,17 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
         ) : (
           <div className="flex gap-2">
             <Button
-              size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white"
+              size="small"
+              appearance="primary"
+              style={{ backgroundColor: '#16a34a' }}
               disabled={busy}
               onClick={handleConfirm}
             >
               Confirm
             </Button>
             <Button
-              size="sm"
-              variant="outline"
+              size="small"
+              appearance="outline"
               disabled={busy}
               onClick={handleReject}
             >
@@ -106,7 +105,7 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
             </Button>
           </div>
         )}
-      </CardContent>
+      </div>
     </Card>
   )
 }

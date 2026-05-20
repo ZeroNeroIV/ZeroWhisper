@@ -1,7 +1,7 @@
 .PHONY: dev build prod clean test backup logs
 
 dev:
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up
+	docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up --build
 
 build:
 	docker compose -f docker/docker-compose.yml build

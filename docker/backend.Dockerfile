@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlcipher-dev \
     libssl-dev \
     pkg-config \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -19,6 +20,7 @@ FROM python:3.12-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlcipher-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r app && useradd -r -g app app

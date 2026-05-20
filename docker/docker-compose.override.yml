@@ -1,9 +1,11 @@
 services:
   backend:
+    user: root
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ../backend:/app
-      - ../data:/app/data
+      - ../backend:/app:z
+      - ../data:/app/data:z
+      - whisper_models:/app/models
     ports:
       - "8000:8000"
 
@@ -15,5 +17,27 @@ services:
     command: npm run dev -- --host 0.0.0.0 --port 5173
     ports:
       - "5173:5173"
+    volumes:
+      - ../frontend/src:/app/src:z
+      - ../frontend/public:/app/public:z
+      - ../frontend/index.html:/app/index.html:z
+      - ../frontend/vite.config.ts:/app/vite.config.ts:z
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - BACKEND_URL=http://backend:8000
+    networks:
+      - internal
+
+  gateway:
+    build: null
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-dev.conf:/etc/nginx/conf.d/default.conf:z
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  whisper_models:

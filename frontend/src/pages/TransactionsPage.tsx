@@ -2,24 +2,19 @@ import { useEffect, useState } from 'react'
 import { useTransactions } from '@/hooks/useTransactions'
 import { TransactionForm } from '@/components/features/TransactionForm'
 import { CsvImportDialog } from '@/components/features/CsvImportDialog'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
+  Button,
+  Badge,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
+  TableBody,
   TableRow,
-} from '@/components/ui/table'
-import {
+  TableHeaderCell,
+  TableCell,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+  Option,
+  Input,
+} from '@fluentui/react-components'
 import { Pencil, Trash2, Upload, Plus } from 'lucide-react'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 import { VALID_CATEGORIES } from '@/types/transaction'
@@ -27,22 +22,13 @@ import { toast } from 'sonner'
 
 const PAGE_SIZE = 20
 
-function getCategoryClass(category: string): string {
+function getCategoryColor(category: string): 'brand' | 'danger' | 'important' | 'informative' | 'severe' | 'subtle' | 'success' | 'warning' {
   switch (category) {
-    case 'Food':
-      return 'bg-green-100 text-green-800'
-    case 'Transport':
-      return 'bg-blue-100 text-blue-800'
-    case 'Housing':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'Entertainment':
-      return 'bg-purple-100 text-purple-800'
-    case 'Income':
-      return 'bg-emerald-100 text-emerald-800'
-    case 'Health':
-      return 'bg-red-100 text-red-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
+    case 'Income': return 'success'
+    case 'Health': return 'danger'
+    case 'Transport': return 'informative'
+    case 'Entertainment': return 'important'
+    default: return 'subtle'
   }
 }
 
@@ -131,61 +117,59 @@ export default function TransactionsPage() {
     : undefined
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            Import CSV
-          </Button>
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Transaction
-          </Button>
+          <Button appearance="outline" icon={<Upload size={16} />} onClick={() => setImportOpen(true)} title="Import CSV" />
+          <Button appearance="primary" icon={<Plus size={16} />} onClick={() => setAddOpen(true)} title="Add Transaction" />
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          value={pendingCategory}
-          onValueChange={setPendingCategory}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All Categories</SelectItem>
+      <div className="space-y-2">
+        <div>
+          <p className="text-xs text-muted-foreground mb-1">Category</p>
+          <Select
+            value={pendingCategory}
+            onChange={(_, data) => setPendingCategory(data.value)}
+            style={{ width: '100%' }}
+          >
+            <Option value="">All categories</Option>
             {VALID_CATEGORIES.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
+              <Option key={cat} value={cat}>{cat}</Option>
             ))}
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="date"
-          value={pendingDateFrom}
-          onChange={(e) => setPendingDateFrom(e.target.value)}
-          className="w-44"
-          placeholder="From date"
-        />
-        <Input
-          type="date"
-          value={pendingDateTo}
-          onChange={(e) => setPendingDateTo(e.target.value)}
-          className="w-44"
-          placeholder="To date"
-        />
-        <Button onClick={handleApplyFilters}>Apply</Button>
+          </Select>
+        </div>
+        <div className="flex gap-2">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="text-xs text-muted-foreground mb-1">From</p>
+            <Input
+              type="date"
+              value={pendingDateFrom}
+              onChange={(e) => setPendingDateFrom(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="text-xs text-muted-foreground mb-1">To</p>
+            <Input
+              type="date"
+              value={pendingDateTo}
+              onChange={(e) => setPendingDateTo(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+        <Button appearance="primary" onClick={handleApplyFilters} style={{ width: '100%' }}>
+          Apply Filters
+        </Button>
       </div>
 
       {/* Error state */}
       {error && (
-        <div className="rounded-md border border-destructive p-4 text-destructive text-sm">
+        <div className="rounded-md border border-red-500 p-4 text-red-600 text-sm">
           {error}
         </div>
       )}
@@ -195,7 +179,7 @@ export default function TransactionsPage() {
         <div className="text-center py-8 text-muted-foreground">Loading...</div>
       )}
 
-      {/* Table */}
+      {/* Transactions list */}
       {!loading && !error && (
         <>
           {transactions.length === 0 ? (
@@ -203,82 +187,91 @@ export default function TransactionsPage() {
               No transactions found.
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Amount (orig)</TableHead>
-                    <TableHead className="text-right">Amount (JOD)</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="whitespace-nowrap">{tx.transaction_date}</TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {tx.description ?? '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getCategoryClass(tx.category)} variant="outline">
-                          {tx.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {parseFloat(tx.amount_original).toFixed(2)} {tx.currency_original}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {parseFloat(tx.amount_base).toFixed(2)} JOD
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditOpen(tx)}
-                            aria-label="Edit transaction"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(tx)}
-                            aria-label="Delete transaction"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-2">
+                {transactions.map((tx) => (
+                  <div key={tx.id} className="rounded-lg border p-3 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground shrink-0">{tx.transaction_date}</span>
+                      <Badge color={getCategoryColor(tx.category)} appearance="tint" className="text-xs shrink-0">
+                        {tx.category}
+                      </Badge>
+                    </div>
+                    <p className="text-sm truncate">{tx.description ?? '—'}</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-semibold">
+                          {parseFloat(tx.amount_original).toFixed(2)} {tx.currency_original}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          = {parseFloat(tx.amount_base).toFixed(2)} JOD
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit" />
+                        <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(tx)} aria-label="Delete" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Date</TableHeaderCell>
+                      <TableHeaderCell>Description</TableHeaderCell>
+                      <TableHeaderCell>Category</TableHeaderCell>
+                      <TableHeaderCell>Amount (orig)</TableHeaderCell>
+                      <TableHeaderCell>Amount (JOD)</TableHeaderCell>
+                      <TableHeaderCell>Actions</TableHeaderCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell>{tx.transaction_date}</TableCell>
+                        <TableCell><span className="max-w-xs truncate block">{tx.description ?? '—'}</span></TableCell>
+                        <TableCell><Badge color={getCategoryColor(tx.category)} appearance="tint">{tx.category}</Badge></TableCell>
+                        <TableCell>{parseFloat(tx.amount_original).toFixed(2)} {tx.currency_original}</TableCell>
+                        <TableCell>{parseFloat(tx.amount_base).toFixed(2)} JOD</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button appearance="transparent" icon={<Pencil size={16} />} onClick={() => handleEditOpen(tx)} aria-label="Edit transaction" />
+                            <Button appearance="transparent" icon={<Trash2 size={16} />} onClick={() => handleDelete(tx)} aria-label="Delete transaction" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
 
           {/* Pagination */}
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center justify-center gap-3">
             <Button
-              variant="outline"
+              appearance="outline"
+              size="small"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
-              Previous
+              ← Prev
             </Button>
             <span className="text-sm text-muted-foreground">
-              Page {page} of {totalPages}
+              {page} / {totalPages}
             </span>
             <Button
-              variant="outline"
+              appearance="outline"
+              size="small"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
-              Next
+              Next →
             </Button>
           </div>
         </>

@@ -16,6 +16,7 @@ ALWAYS_ALLOWED = {
     "/setup/initialize",
     "/setup/unlock",
     "/setup/recover",
+    "/setup/vaults",
     "/docs",
     "/openapi.json",
     "/redoc",

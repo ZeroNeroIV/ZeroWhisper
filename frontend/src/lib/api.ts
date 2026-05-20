@@ -11,6 +11,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   async (error) => {
+    // DB not ready (vault locked / backend restarted) — send to setup
+    if (
+      error.response?.status === 503 &&
+      error.response?.data?.detail?.includes('setup') &&
+      !error.config?.url?.startsWith('/setup') &&
+      !error.config?.url?.startsWith('/auth')
+    ) {
+      window.location.href = '/setup'
+      return Promise.reject(error)
+    }
+
     if (error.response?.status === 401 && !error.config._retry) {
       error.config._retry = true
       const refresh = localStorage.getItem('refresh_token')

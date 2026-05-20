@@ -5,28 +5,17 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import {
   Dialog,
-  DialogContent,
-  DialogHeader,
+  DialogSurface,
+  DialogBody,
   DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
-import {
+  DialogContent,
+  DialogActions,
+  Field,
+  Input,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+  Option,
+  Button,
+} from '@fluentui/react-components'
 import type { TransactionFormData } from '@/types/transaction'
 import { VALID_CATEGORIES, VALID_CURRENCIES } from '@/types/transaction'
 
@@ -55,7 +44,14 @@ export function TransactionForm({
   onSubmit,
   title = 'Transaction',
 }: TransactionFormProps) {
-  const form = useForm<FormSchema>({
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormSchema>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       amount_original: initialData?.amount_original ?? undefined,
@@ -66,9 +62,12 @@ export function TransactionForm({
     },
   })
 
+  const currencyValue = watch('currency_original')
+  const categoryValue = watch('category')
+
   useEffect(() => {
     if (open) {
-      form.reset({
+      reset({
         amount_original: initialData?.amount_original ?? undefined,
         currency_original: initialData?.currency_original ?? 'JOD',
         category: initialData?.category ?? '',
@@ -76,9 +75,9 @@ export function TransactionForm({
         transaction_date: initialData?.transaction_date ?? '',
       })
     }
-  }, [open, initialData, form])
+  }, [open, initialData, reset])
 
-  const handleSubmit = async (values: FormSchema) => {
+  const handleFormSubmit = async (values: FormSchema) => {
     try {
       await onSubmit(values as TransactionFormData)
       onOpenChange(false)
@@ -87,131 +86,96 @@ export function TransactionForm({
     }
   }
 
-  const isSubmitting = form.formState.isSubmitting
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(_, data) => onOpenChange(data.open)}>
+      <DialogSurface>
+        <DialogBody>
           <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="amount_original"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      {...field}
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="currency_original"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Currency</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select currency" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {VALID_CURRENCIES.map((currency) => (
-                        <SelectItem key={currency} value={currency}>
-                          {currency}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {VALID_CATEGORIES.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter description" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="transaction_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
+          <DialogContent>
+            <form id="transaction-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 pt-2">
+              <Field
+                label="Amount"
+                validationMessage={errors.amount_original?.message}
+                validationState={errors.amount_original ? 'error' : 'none'}
               >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  {...register('amount_original', { valueAsNumber: true })}
+                />
+              </Field>
+
+              <Field
+                label="Currency"
+                validationMessage={errors.currency_original?.message}
+                validationState={errors.currency_original ? 'error' : 'none'}
+              >
+                <Select
+                  value={currencyValue}
+                  onChange={(_, data) => setValue('currency_original', data.value as 'JOD' | 'USD')}
+                >
+                  {VALID_CURRENCIES.map((currency) => (
+                    <Option key={currency} value={currency}>
+                      {currency}
+                    </Option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field
+                label="Category"
+                validationMessage={errors.category?.message}
+                validationState={errors.category ? 'error' : 'none'}
+              >
+                <Select
+                  value={categoryValue}
+                  onChange={(_, data) => setValue('category', data.value)}
+                >
+                  {VALID_CATEGORIES.map((category) => (
+                    <Option key={category} value={category}>
+                      {category}
+                    </Option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field
+                label="Description (optional)"
+                validationMessage={errors.description?.message}
+                validationState={errors.description ? 'error' : 'none'}
+              >
+                <Input placeholder="Enter description" {...register('description')} />
+              </Field>
+
+              <Field
+                label="Date"
+                validationMessage={errors.transaction_date?.message}
+                validationState={errors.transaction_date ? 'error' : 'none'}
+              >
+                <Input type="date" {...register('transaction_date')} />
+              </Field>
+            </form>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              appearance="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="transaction-form"
+              appearance="primary"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
     </Dialog>
   )
 }

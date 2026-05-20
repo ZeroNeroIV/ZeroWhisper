@@ -17,6 +17,17 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     whisper_model: str = "gpt-4o-mini"
 
+    groq_api_key: str = ""
+
+    # Local Whisper (faster-whisper). Model downloaded on first use.
+    # Options: tiny, base, small, medium, large-v3
+    local_whisper_model: str = "small"
+    whisper_cache_dir: str = "/app/models"
+
+    ai_provider: str = "openai"  # "openai" or "gemini"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     log_level: str = "INFO"
     auto_fetch_exchange_rate: bool = False
     default_exchange_rate: float = 0.709  # JOD per USD fallback

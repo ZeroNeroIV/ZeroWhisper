@@ -1,0 +1,11 @@
+frontend/node_modules
+backend/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.git
+.claude
+data/*.db
+data/*.db-shm
+data/*.db-wal
+e2e/node_modules

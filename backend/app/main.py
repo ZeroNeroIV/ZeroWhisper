@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.config import settings  # noqa: F401 — triggers env loading
 from app.middleware.setup_guard import SetupGuardMiddleware
@@ -16,6 +17,22 @@ from app.routers import analytics as analytics_router
 app = FastAPI(title="ZeroWhisper", version="0.1.0")
 
 app.add_middleware(SetupGuardMiddleware)
+
+
+@app.exception_handler(Exception)
+async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Catch pysqlcipher3 DatabaseError (and any other unexpected DB error) so
+    # the client gets a structured JSON response instead of FastAPI's bare 500.
+    try:
+        import pysqlcipher3.dbapi2 as _psc  # type: ignore[import-untyped]
+        if isinstance(exc, _psc.DatabaseError):
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Database unavailable. Please unlock the database via /setup/unlock."},
+            )
+    except ImportError:
+        pass
+    raise exc
 
 app.include_router(setup_router.router, prefix="/setup", tags=["setup"])
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])

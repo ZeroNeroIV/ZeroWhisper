@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { api } from '@/lib/api'
 
 export interface TransactionProposal {
@@ -32,9 +32,43 @@ export interface ChatMessage {
   status?: 'confirmed' | 'rejected'
 }
 
-export function useWhisper() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+const MAX_HISTORY = 200
+
+function storageKey(username: string) {
+  return `whisper_history_${username}`
+}
+
+function loadHistory(username: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(storageKey(username))
+    if (!raw) return []
+    return JSON.parse(raw) as ChatMessage[]
+  } catch {
+    return []
+  }
+}
+
+function saveHistory(username: string, messages: ChatMessage[]) {
+  try {
+    const trimmed = messages.slice(-MAX_HISTORY)
+    localStorage.setItem(storageKey(username), JSON.stringify(trimmed))
+  } catch {
+    // storage quota exceeded — fail silently
+  }
+}
+
+export function useWhisper(username: string) {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(username))
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    saveHistory(username, messages)
+  }, [username, messages])
+
+  const clearHistory = useCallback(() => {
+    setMessages([])
+    localStorage.removeItem(storageKey(username))
+  }, [username])
 
   const sendMessage = useCallback(async (text: string) => {
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', text }
@@ -46,7 +80,11 @@ export function useWhisper() {
       setMessages(prev => [...prev, whisperMsg])
       return data
     } catch {
-      const errorMsg: ChatMessage = { id: crypto.randomUUID(), role: 'whisper', text: 'Sorry, something went wrong. Please try again.' }
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'whisper',
+        text: 'Sorry, something went wrong. Please try again.',
+      }
       setMessages(prev => [...prev, errorMsg])
       return null
     } finally {
@@ -56,13 +94,17 @@ export function useWhisper() {
 
   const confirmProposal = useCallback(async (proposalId: string, messageId: string) => {
     await api.post('/api/whisper/confirm', { proposal_id: proposalId })
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'confirmed' as const } : m))
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, status: 'confirmed' as const } : m))
+    )
   }, [])
 
   const rejectProposal = useCallback(async (proposalId: string, messageId: string) => {
     await api.post('/api/whisper/reject', { proposal_id: proposalId })
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'rejected' as const } : m))
+    setMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, status: 'rejected' as const } : m))
+    )
   }, [])
 
-  return { messages, loading, sendMessage, confirmProposal, rejectProposal }
+  return { messages, loading, sendMessage, confirmProposal, rejectProposal, clearHistory }
 }

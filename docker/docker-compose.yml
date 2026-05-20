@@ -6,12 +6,9 @@ services:
     env_file:
       - path: ../.env
         required: true
-    environment:
-      - WHISPER_MODEL=${WHISPER_MODEL:-gpt-4o-mini}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ../data:/app/data
+      - ../data:/app/data:z
+      - whisper_models:/app/models
     restart: unless-stopped
     networks:
       - internal
@@ -22,7 +19,7 @@ services:
       retries: 3
       start_period: 10s
 
-  frontend:
+  gateway:
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile
@@ -38,3 +35,6 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  whisper_models:
