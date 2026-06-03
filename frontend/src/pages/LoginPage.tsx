@@ -26,6 +26,10 @@ const registerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  password_confirm: z.string().min(8, 'Password must be at least 8 characters'),
+}).refine((data) => data.password === data.password_confirm, {
+  message: 'Passwords do not match',
+  path: ['password_confirm'],
 })
 
 type LoginFormData = z.infer<typeof loginSchema>
@@ -117,13 +121,13 @@ function RegisterForm() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { username: '', email: '', password: '' },
+    defaultValues: { username: '', email: '', password: '', password_confirm: '' },
   })
 
   const onSubmit = async (values: RegisterFormData) => {
     setError(null)
     try {
-      await registerUser(values.username, values.email, values.password)
+      await registerUser(values.username, values.email, values.password, values.password_confirm)
       await login(values.username, values.password)
       navigate('/dashboard', { replace: true })
     } catch (err) {
@@ -164,6 +168,19 @@ function RegisterForm() {
           placeholder="••••••••"
           autoComplete="new-password"
           {...register('password')}
+        />
+      </Field>
+
+      <Field
+        label="Confirm password"
+        validationMessage={errors.password_confirm?.message}
+        validationState={errors.password_confirm ? 'error' : 'none'}
+      >
+        <Input
+          type="password"
+          placeholder="••••••••"
+          autoComplete="new-password"
+          {...register('password_confirm')}
         />
       </Field>
 

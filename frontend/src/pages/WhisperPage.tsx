@@ -59,7 +59,7 @@ export default function WhisperPage() {
           const { data } = await api.post<{ text: string }>('/api/whisper/transcribe', form)
           const text = data.text?.trim()
           if (text) {
-            setInput(text)
+            setInput(prev => (prev ? prev + ' ' + text : text))
           } else {
             toast.warning("Nothing detected — try speaking louder or closer to the mic.")
           }

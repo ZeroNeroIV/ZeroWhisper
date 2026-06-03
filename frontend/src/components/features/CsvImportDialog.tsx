@@ -94,7 +94,19 @@ export function CsvImportDialog({ open, onOpenChange, onImported }: CsvImportDia
             <div className="space-y-4">
               <Button
                 appearance="outline"
-                onClick={() => window.open('/api/imports/template')}
+                onClick={async () => {
+                  try {
+                    const { data } = await api.get('/api/imports/template', { responseType: 'blob' })
+                    const url = URL.createObjectURL(data)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = 'template.csv'
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  } catch {
+                    toast.error('Failed to download template')
+                  }
+                }}
               >
                 Download Template
               </Button>

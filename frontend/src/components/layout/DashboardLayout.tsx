@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { WhisperFAB } from '@/components/features/WhisperFAB'
 import { cn } from '@/lib/utils'
 
 export function DashboardLayout() {
@@ -34,6 +35,8 @@ export function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      <WhisperFAB />
     </div>
   )
 }

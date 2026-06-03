@@ -1,11 +1,8 @@
 from decimal import Decimal
 from datetime import date
-from typing import Optional, Literal
+from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
-
-VALID_CATEGORIES = ["Food", "Transport", "Housing", "Utilities", "Entertainment",
-                    "Shopping", "Health", "Education", "Income", "Other"]
 
 VALID_CURRENCIES = ["JOD", "USD"]
 
@@ -16,19 +13,13 @@ class TransactionCreate(BaseModel):
     category: str
     description: Optional[str] = None
     transaction_date: date
+    wallet_id: Optional[UUID] = None
 
     @field_validator("currency_original")
     @classmethod
     def validate_currency(cls, v: str) -> str:
         if v not in VALID_CURRENCIES:
             raise ValueError(f"currency_original must be one of {VALID_CURRENCIES}")
-        return v
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: str) -> str:
-        if v not in VALID_CATEGORIES:
-            raise ValueError(f"category must be one of {VALID_CATEGORIES}")
         return v
 
 
@@ -38,19 +29,13 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     transaction_date: Optional[date] = None
+    wallet_id: Optional[UUID] = None
 
     @field_validator("currency_original")
     @classmethod
     def validate_currency(cls, v: str | None) -> str | None:
         if v is not None and v not in VALID_CURRENCIES:
             raise ValueError(f"currency_original must be one of {VALID_CURRENCIES}")
-        return v
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: str | None) -> str | None:
-        if v is not None and v not in VALID_CATEGORIES:
-            raise ValueError(f"category must be one of {VALID_CATEGORIES}")
         return v
 
 
@@ -65,6 +50,7 @@ class TransactionRead(BaseModel):
     description: Optional[str]
     transaction_date: date
     source: str
+    wallet_id: Optional[UUID] = None
     created_at: str  # ISO format
 
 

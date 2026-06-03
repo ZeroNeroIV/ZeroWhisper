@@ -31,4 +31,5 @@ class Transaction(SQLModel, table=True):
     transaction_date: dt.date = Field(index=True)
     source: str = Field(default="manual")
     is_deleted: bool = Field(default=False)
+    wallet_id: Optional[UUID] = Field(default=None, foreign_key="wallet.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)

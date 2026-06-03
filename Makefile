@@ -1,17 +1,20 @@
+COMPOSE_PROJECT_NAME ?= zerowhisper
+COMPOSE_CMD = docker compose -p $(COMPOSE_PROJECT_NAME) -f docker/docker-compose.yml
+
 .PHONY: dev build prod clean test backup logs
 
 dev:
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up --build
+	$(COMPOSE_CMD) -f docker/docker-compose.override.yml up --build
 
 build:
-	docker compose -f docker/docker-compose.yml build
+	$(COMPOSE_CMD) build
 
 prod:
-	docker compose -f docker/docker-compose.yml up -d
+	$(COMPOSE_CMD) down --remove-orphans 2>/dev/null; $(COMPOSE_CMD) up -d
 
 clean:
-	docker compose -f docker/docker-compose.yml down -v
-	docker compose -f docker/docker-compose.yml build --no-cache
+	$(COMPOSE_CMD) down -v --remove-orphans
+	$(COMPOSE_CMD) build --no-cache
 
 test:
 	cd backend && python -m pytest tests/ -v
@@ -20,4 +23,4 @@ backup:
 	cp data/zerowhisper.db data/zerowhisper.db.backup.$$(date +%Y%m%d_%H%M%S)
 
 logs:
-	docker compose -f docker/docker-compose.yml logs -f
+	$(COMPOSE_CMD) logs -f

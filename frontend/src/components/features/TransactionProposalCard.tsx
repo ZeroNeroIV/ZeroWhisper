@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Card, Button, Badge } from '@fluentui/react-components'
+import { useEffect, useState } from 'react'
+import { Card, Button } from '@fluentui/react-components'
 import { CheckCircle2 } from 'lucide-react'
 import type { WhisperResponse } from '@/hooks/useWhisper'
+import { useCategories } from '@/hooks/useCategories'
 
 interface Props {
   messageId: string
@@ -13,6 +14,10 @@ interface Props {
 
 export function TransactionProposalCard({ messageId, response, status, onConfirm, onReject }: Props) {
   const [busy, setBusy] = useState(false)
+  const { categories, fetchCategories } = useCategories()
+
+  useEffect(() => { fetchCategories() }, [fetchCategories])
+
   const { proposal_id, proposal, persona_message, spending_context } = response
   const confidencePct = Math.round(proposal.confidence * 100)
 
@@ -68,7 +73,22 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">Category</span>
-            <Badge appearance="tint" className="text-xs">{proposal.category}</Badge>
+            {(() => {
+              const cat = categories.find((c) => c.name === proposal.category)
+              const color = cat?.color
+              const icon = cat?.icon
+              const textEl = !color
+                ? <span className="text-xs font-medium text-muted-foreground">{proposal.category}</span>
+                : color.startsWith('animated:')
+                  ? <span className="text-xs font-medium animate-gradient" style={{ background: color.slice('animated:'.length), WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}>{proposal.category}</span>
+                  : color.startsWith('linear-gradient') || color.startsWith('radial-gradient')
+                    ? <span className="text-xs font-medium" style={{ background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}>{proposal.category}</span>
+                    : <span className="text-xs font-medium" style={{ color }}>{proposal.category}</span>
+              if (icon) {
+                return <><span className="inline md:hidden text-base">{icon}</span><span className="hidden md:inline">{textEl}</span></>
+              }
+              return textEl
+            })()}
           </div>
           <div className="flex items-start justify-between gap-2">
             <span className="text-xs text-muted-foreground shrink-0">Description</span>

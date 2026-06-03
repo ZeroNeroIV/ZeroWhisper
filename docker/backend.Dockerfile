@@ -31,9 +31,8 @@ COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini .
 
-RUN mkdir -p data && chown -R app:app /app
+RUN mkdir -p data
 
-USER app
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

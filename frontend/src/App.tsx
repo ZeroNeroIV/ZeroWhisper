@@ -7,42 +7,14 @@ import LoginPage from '@/pages/LoginPage'
 import SetupPage from '@/pages/SetupPage'
 import DashboardPage from '@/pages/DashboardPage'
 import TransactionsPage from '@/pages/TransactionsPage'
-import WhisperPage from '@/pages/WhisperPage'
 import VisualizationsPage from '@/pages/VisualizationsPage'
 import SettingsPage from '@/pages/SettingsPage'
-import { useEffect, useState } from 'react'
 import { Toaster } from 'sonner'
+import { useTheme } from '@/hooks/useTheme'
 
 function ThemedApp() {
-  const [isDark, setIsDark] = useState(() => {
-    const stored = localStorage.getItem('theme')
-    if (stored) return stored === 'dark'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
-  useEffect(() => {
-    const handler = () => {
-      const stored = localStorage.getItem('theme')
-      if (stored) {
-        setIsDark(stored === 'dark')
-      }
-    }
-    window.addEventListener('storage', handler)
-    // Also poll periodically to pick up same-tab changes
-    const interval = setInterval(handler, 300)
-    return () => {
-      window.removeEventListener('storage', handler)
-      clearInterval(interval)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }, [isDark])
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   return (
     <FluentProvider theme={isDark ? webDarkTheme : webLightTheme}>
@@ -61,7 +33,6 @@ function ThemedApp() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/whisper" element={<WhisperPage />} />
               <Route path="/visualizations" element={<VisualizationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

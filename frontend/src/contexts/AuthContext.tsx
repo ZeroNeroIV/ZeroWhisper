@@ -5,7 +5,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   username: string | null
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, email: string, password: string) => Promise<void>
+  register: (username: string, email: string, password: string, password_confirm: string) => Promise<void>
   logout: () => void
 }
 
@@ -28,8 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(true)
   }
 
-  const register = async (username: string, email: string, password: string) => {
-    await api.post('/auth/register', { username, email, password })
+  const register = async (username: string, email: string, password: string, password_confirm: string) => {
+    await api.post('/auth/register', { username, email, password, password_confirm })
   }
 
   const logout = () => {

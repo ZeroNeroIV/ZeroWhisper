@@ -37,7 +37,7 @@ export default async function globalSetup() {
 
   // Register test user (ignore 409 / already-exists errors)
   const regRes = await ctx.post('/auth/register', {
-    data: { username: TEST_USER, email: TEST_EMAIL, password: TEST_PASSWORD },
+    data: { username: TEST_USER, email: TEST_EMAIL, password: TEST_PASSWORD, password_confirm: TEST_PASSWORD },
   })
   if (!regRes.ok() && regRes.status() !== 409) {
     const body = await regRes.text()

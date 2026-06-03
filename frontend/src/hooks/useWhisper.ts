@@ -7,6 +7,7 @@ export interface TransactionProposal {
   description: string
   category: string
   confidence: number
+  transaction_date?: string
 }
 
 export interface SpendingContext {

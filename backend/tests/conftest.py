@@ -9,15 +9,13 @@ import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
 
 # Set a test JWT secret before importing app modules so the Settings
 # model_validator does not reject the insecure default.
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-testing-only-32ch")
 
 # Must import database helpers before the app to avoid circular issues
-from app.database import initialize_engine, create_db_and_tables, get_engine
-import app.services.setup as setup_service
+from app.database import initialize_engine, _db_manager
 
 # Attempt to import SQLCipher; skip gracefully if unavailable.
 try:
@@ -48,24 +46,8 @@ def test_db():
     os.unlink(db_path)
 
     initialize_engine(db_path, TEST_KEY)
-    create_db_and_tables()
-    setup_service._current_key = TEST_KEY
-
-    # Also mock get_state to return INITIALIZED so is_db_ready() works.
-    # We monkeypatch the module-level function to avoid touching real state files.
-    from app.services.setup import SetupState
-    original_get_state = setup_service.get_state
-
-    def _mock_get_state():
-        return SetupState.INITIALIZED
-
-    setup_service.get_state = _mock_get_state
 
     yield db_path
-
-    # Restore
-    setup_service.get_state = original_get_state
-    setup_service._current_key = None
 
     try:
         os.unlink(db_path)
@@ -83,11 +65,18 @@ def client(test_db):
     from app.database import get_session
 
     def get_test_session():
-        with Session(get_engine()) as session:
+        for session in _db_manager.get_session():
             yield session
 
     app.dependency_overrides[get_session] = get_test_session
     with TestClient(app, raise_server_exceptions=True) as c:
+        # Sync Container vault state with test DB state so the
+        # setup-guard middleware doesn't block requests
+        from app.main import _CONTAINER
+        if _CONTAINER:
+            _CONTAINER.vault_manager._active_vault_id = "test"
+            _CONTAINER.vault_manager._current_key = TEST_KEY
+            _CONTAINER.vault_manager._db_ready = True
         yield c
     app.dependency_overrides.clear()
 
