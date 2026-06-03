@@ -124,7 +124,7 @@ class Container:
         return BankConnectionService(self._bank_connection_repo(session))
 
     def wallet_service(self, session: Session) -> WalletService:
-        return WalletService(self._wallet_repo(session))
+        return WalletService(self._wallet_repo(session), self._transaction_repo(session))
 
     def exchange_rate_service(self, session: Session) -> ExchangeRateService:
         return ExchangeRateService(self._exchange_rate_repo(session), FrankfurterClient())

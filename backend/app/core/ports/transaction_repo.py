@@ -61,6 +61,11 @@ class TransactionRepository(ABC):
         ...
 
     @abstractmethod
+    def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
+        """Sum amount_base for non-deleted transactions in a given wallet."""
+        ...
+
+    @abstractmethod
     def sum_by_categories(
         self,
         user_id: UUID,

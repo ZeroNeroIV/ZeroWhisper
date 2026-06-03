@@ -122,6 +122,13 @@ class InMemoryTransactionRepository(TransactionRepository):
         self._store[tx.id] = tx
         return tx
 
+    def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
+        return sum(
+            (t.amount_base for t in self._store.values()
+             if t.wallet_id == wallet_id and t.user_id == user_id and not t.is_deleted),
+            Decimal("0"),
+        )
+
     def sum_by_categories(self, user_id: UUID, categories: list[str]) -> Decimal:
         return sum(
             (t.amount_base for t in self._store.values()

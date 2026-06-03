@@ -170,6 +170,16 @@ class SQLModelTransactionRepository(TransactionRepository):
         self._session.refresh(orm)
         return self._to_domain(orm)
 
+    def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
+        result = self._session.exec(
+            select(func.sum(ORMTransaction.amount_base)).where(
+                ORMTransaction.wallet_id == wallet_id,
+                ORMTransaction.user_id == user_id,
+                ORMTransaction.is_deleted == False,
+            )
+        ).one()
+        return result or Decimal("0")
+
     def sum_by_categories(self, user_id: UUID, categories: list[str]) -> Decimal:
         if not categories:
             return Decimal("0")
