@@ -81,3 +81,31 @@ export function useExchangeRates() {
 
   return { current, history, loading, fetch: fetchRates, setRate, toggleAutoFetch }
 }
+
+export interface FxSettings {
+  fx_api_url: string
+  fx_api_key: string
+}
+
+export function useExchangeRateSettings() {
+  const [settings, setSettings] = useState<FxSettings | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await api.get<FxSettings>('/api/exchange-rates/settings')
+      setSettings(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const updateSettings = async (patch: Partial<FxSettings>) => {
+    const { data } = await api.put<FxSettings>('/api/exchange-rates/settings', patch)
+    setSettings(data)
+    return data
+  }
+
+  return { settings, loading, fetchSettings, updateSettings }
+}

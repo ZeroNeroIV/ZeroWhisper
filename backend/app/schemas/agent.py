@@ -3,7 +3,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 VALID_CATEGORIES = ["Food", "Transport", "Housing", "Utilities", "Entertainment",
-                    "Shopping", "Health", "Education", "Income", "Other"]
+                    "Shopping", "Health", "Education", "Income", "Savings", "Other"]
 
 
 class TransactionProposal(BaseModel):
@@ -12,6 +12,7 @@ class TransactionProposal(BaseModel):
     description: str
     category: str
     confidence: float
+    transaction_date: str | None = None  # ISO 8601 date, optional
 
 
 class SpendingContext(BaseModel):

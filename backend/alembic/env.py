@@ -5,7 +5,8 @@ from sqlalchemy import engine_from_config, pool, event
 from alembic import context
 
 # Import SQLModel metadata via our models
-from app.models import User, Transaction, ExchangeRate  # noqa: F401 — registers metadata
+from app.models import User, Transaction, ExchangeRate, Category  # noqa: F401 — registers metadata
+from app.models.bank import BankConnection  # noqa: F401
 from sqlmodel import SQLModel
 
 config = context.config

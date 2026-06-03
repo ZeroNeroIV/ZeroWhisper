@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   TabList,
@@ -21,7 +22,13 @@ import {
   TableCell,
   Field,
 } from '@fluentui/react-components'
-import { useApiKeys, useExchangeRates } from '@/hooks/useSettings'
+import { Pencil, Trash2, Save } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { PromptDialog } from '@/components/ui/PromptDialog'
+import { useApiKeys, useExchangeRates, useExchangeRateSettings, type FxSettings } from '@/hooks/useSettings'
+import { useBankConnections, type BankConnection } from '@/hooks/useBankConnections'
+import { useCategories } from '@/hooks/useCategories'
+import type { Category } from '@/types/category'
 import { api } from '@/lib/api'
 
 // ─── API Keys Tab ─────────────────────────────────────────────────────────────
@@ -206,6 +213,681 @@ function ApiKeysTab() {
   )
 }
 
+// ─── Categories Tab ─────────────────────────────────────────────────────────
+
+const SOLID_COLORS = [
+  '#ef4444', '#f97316', '#f59e0b', '#22c55e', '#14b8a6',
+  '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#6b7280',
+  '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0d9488',
+  '#2563eb', '#4f46e5', '#7c3aed', '#db2777', '#4b5563',
+]
+
+const GRADIENT_PRESETS = [
+  { label: 'Sunset', value: 'linear-gradient(135deg, #ff6b6b, #feca57)' },
+  { label: 'Ocean', value: 'linear-gradient(135deg, #48dbfb, #0abde3)' },
+  { label: 'Forest', value: 'linear-gradient(135deg, #2ecc71, #26a65b)' },
+  { label: 'Lavender', value: 'linear-gradient(135deg, #a29bfe, #6c5ce7)' },
+  { label: 'Peach', value: 'linear-gradient(135deg, #fd79a8, #e84393)' },
+  { label: 'Mint', value: 'linear-gradient(135deg, #55efc4, #00b894)' },
+  { label: 'Coral', value: 'linear-gradient(135deg, #ff7675, #d63031)' },
+  { label: 'Sky', value: 'linear-gradient(135deg, #74b9ff, #0984e3)' },
+  { label: 'Neon', value: 'linear-gradient(135deg, #ffd93d, #ff6b6b)' },
+  { label: 'Midnight', value: 'linear-gradient(135deg, #2d3436, #636e72)' },
+  { label: 'Aurora', value: 'linear-gradient(135deg, #00b894, #00cec9, #0984e3)' },
+  { label: 'Rose', value: 'linear-gradient(135deg, #e84393, #fd79a8, #fab1a0)' },
+]
+
+function ColorSwatch({ color, size = 10 }: { color: string | null; size?: number }) {
+  if (!color) {
+    return <span className={`inline-block rounded-full shrink-0 bg-gray-300`} style={{ width: size, height: size }} />
+  }
+  const isGradient = color.startsWith('linear-gradient') || color.startsWith('radial-gradient')
+  const isAnimated = color.startsWith('animated:')
+  const bg = isAnimated ? color.slice(9) : color
+
+  if (isGradient || isAnimated) {
+    return (
+      <span
+        className={`inline-block rounded-full shrink-0 ${isAnimated ? 'animate-gradient' : ''}`}
+        style={{ width: size, height: size, background: bg, backgroundSize: isAnimated ? '200% 200%' : undefined }}
+      />
+    )
+  }
+  return <span className="inline-block rounded-full shrink-0" style={{ width: size, height: size, backgroundColor: color }} />
+}
+
+function parseGradient(gradient: string): { angle: number; colors: string[] } | null {
+  const clean = gradient.replace('animated:', '')
+  const match = clean.match(/linear-gradient\((\d+)deg,\s*(.*)\)/)
+  if (!match) return null
+  return { angle: parseInt(match[1]), colors: match[2].split(',').map(s => s.trim()) }
+}
+
+function buildGradient(angle: number, colors: string[]): string {
+  return `linear-gradient(${angle}deg, ${colors.join(', ')})`
+}
+
+interface SavedTemplate {
+  id: string
+  label: string
+  value: string
+  type: 'solid' | 'gradient' | 'animated'
+}
+
+const STORAGE_KEY = 'zw-saved-color-templates'
+
+function loadTemplates(): SavedTemplate[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+  } catch { return [] }
+}
+
+function saveTemplates(templates: SavedTemplate[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(templates))
+}
+
+function CategoriesTab() {
+  const { categories, loading, fetchCategories, createCategory, updateCategory, deleteCategory } = useCategories()
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formName, setFormName] = useState('')
+  const [formType, setFormType] = useState<'income' | 'expense' | 'savings'>('expense')
+  const [formColor, setFormColor] = useState('#6b7280')
+  const [formIcon, setFormIcon] = useState('')
+  const [colorTab, setColorTab] = useState<'solid' | 'gradient' | 'animated'>('solid')
+  const [customHex, setCustomHex] = useState('#6b7280')
+  const [gradientAngle, setGradientAngle] = useState(135)
+  const [gradientColors, setGradientColors] = useState<string[]>(['#ff6b6b', '#feca57'])
+  const [midColorCount, setMidColorCount] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>(loadTemplates)
+  const [templatePromptOpen, setTemplatePromptOpen] = useState(false)
+  const [deleteCatTarget, setDeleteCatTarget] = useState<Category | null>(null)
+
+  useEffect(() => { fetchCategories() }, [fetchCategories])
+
+  const initGradientBuilder = (color: string) => {
+    const parsed = parseGradient(color)
+    if (parsed) {
+      setGradientAngle(parsed.angle)
+      setGradientColors(parsed.colors)
+      setMidColorCount(Math.max(0, parsed.colors.length - 2))
+    }
+  }
+
+  const openCreate = () => {
+    setEditingId(null)
+    setFormName('')
+    setFormType('expense')
+    setFormColor('#6b7280')
+    setFormIcon('')
+    setColorTab('solid')
+    setCustomHex('#6b7280')
+    setGradientAngle(135)
+    setGradientColors(['#ff6b6b', '#feca57'])
+    setMidColorCount(0)
+    setDialogOpen(true)
+  }
+
+  const openEdit = (cat: Category) => {
+    setEditingId(cat.id)
+    setFormName(cat.name)
+    setFormType(cat.type)
+    const color = cat.color || '#6b7280'
+    setFormColor(color)
+    setFormIcon(cat.icon || '')
+    setCustomHex(color.startsWith('#') ? color : '#6b7280')
+    initGradientBuilder(color)
+    if (color.startsWith('animated:')) setColorTab('animated')
+    else if (color.startsWith('linear-gradient') || color.startsWith('radial-gradient')) setColorTab('gradient')
+    else setColorTab('solid')
+    setDialogOpen(true)
+  }
+
+  const pickColor = (c: string) => {
+    setFormColor(c)
+    if (c.startsWith('#')) setCustomHex(c)
+  }
+
+  const pickGradientPreset = (value: string) => {
+    pickColor(value)
+    initGradientBuilder(value)
+  }
+
+  const updateGradientColor = (index: number, hex: string) => {
+    const next = [...gradientColors]
+    next[index] = hex
+    setGradientColors(next)
+    const prefix = colorTab === 'animated' ? 'animated:' : ''
+    setFormColor(prefix + buildGradient(gradientAngle, next))
+  }
+
+  const updateGradientAngle = (angle: number) => {
+    setGradientAngle(angle)
+    const prefix = colorTab === 'animated' ? 'animated:' : ''
+    setFormColor(prefix + buildGradient(angle, gradientColors))
+  }
+
+  const adjustMidColors = (delta: number) => {
+    const nextCount = midColorCount + delta
+    if (nextCount < 0 || nextCount > 4) return
+    setMidColorCount(nextCount)
+    if (delta > 0) {
+      const next = [...gradientColors, '#6b7280']
+      setGradientColors(next)
+      const prefix = colorTab === 'animated' ? 'animated:' : ''
+      setFormColor(prefix + buildGradient(gradientAngle, next))
+    } else {
+      const next = gradientColors.slice(0, -1)
+      setGradientColors(next)
+      const prefix = colorTab === 'animated' ? 'animated:' : ''
+      setFormColor(prefix + buildGradient(gradientAngle, next))
+    }
+  }
+
+  const handleSaveTemplate = () => {
+    setTemplatePromptOpen(true)
+  }
+
+  const confirmSaveTemplate = (label: string) => {
+    if (!label.trim()) return
+    const tpl: SavedTemplate = {
+      id: Date.now().toString(36),
+      label: label.trim(),
+      value: formColor,
+      type: colorTab,
+    }
+    const next = [...savedTemplates, tpl]
+    setSavedTemplates(next)
+    saveTemplates(next)
+    toast.success('Template saved')
+  }
+
+  const handleDeleteTemplate = (id: string) => {
+    const next = savedTemplates.filter((t) => t.id !== id)
+    setSavedTemplates(next)
+    saveTemplates(next)
+  }
+
+  const handleSave = async () => {
+    if (!formName.trim()) { toast.error('Name is required'); return }
+    setSaving(true)
+    try {
+      const icon = formIcon.trim() || undefined
+      if (editingId) {
+        await updateCategory(editingId, { name: formName.trim(), type: formType, color: formColor, icon })
+        toast.success('Category updated')
+      } else {
+        await createCategory({ name: formName.trim(), type: formType, color: formColor, icon })
+        toast.success('Category created')
+      }
+      setDialogOpen(false)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save category')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (cat: Category) => {
+    if (cat.is_default) {
+      setDeleteCatTarget(cat)
+    } else {
+      confirmDeleteCat(cat)
+    }
+  }
+
+  const confirmDeleteCat = async (cat: Category) => {
+    try {
+      await deleteCategory(cat.id)
+      toast.success('Category deleted')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete category')
+    }
+    setDeleteCatTarget(null)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Categories</h2>
+        <Button appearance="primary" onClick={openCreate}>Add Category</Button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : categories.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No categories yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {categories.map((cat) => (
+            <div key={cat.id} className="flex items-center justify-between rounded-lg border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <ColorSwatch color={cat.color} size={14} />
+                {cat.icon && <span className="text-base">{cat.icon}</span>}
+                <div>
+                  <span className="text-sm font-medium">{cat.name}</span>
+                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                    cat.type === 'income' ? 'bg-green-100 text-green-700' : cat.type === 'savings' ? 'bg-cyan-100 text-cyan-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {cat.type}
+                  </span>
+                  {cat.is_default && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => openEdit(cat)} aria-label="Edit category" />
+                <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(cat)} aria-label="Delete category" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={(_, data) => { if (!data.open) setDialogOpen(false) }}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>{editingId ? 'Edit Category' : 'Add Category'}</DialogTitle>
+            <DialogContent>
+              <div className="space-y-4 pt-2">
+                <Field label="Name">
+                  <Input
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. Subscriptions"
+                  />
+                </Field>
+
+                <Field label="Type">
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['expense', 'income', 'savings'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setFormType(t)}
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                          formType === t ? 'border-primary bg-primary/5 text-primary' : 'border-border'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Icon (emoji)">
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['🍕', '🚗', '🏠', '💡', '🎬', '🛍️', '🏥', '📚', '📋', '💰', '☕', '🍔', '🍺', '🎮', '✈️', '👕', '💊', '🎓', '🐾', '🎵', '🏋️', '📱', '💻', '🌿', '🔧', '🎁', '👶', '💼', '🏦', '📈'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setFormIcon(formIcon === emoji ? '' : emoji)}
+                        className={`h-8 w-8 rounded-md text-lg flex items-center justify-center transition-all ${
+                          formIcon === emoji ? 'ring-2 ring-primary ring-offset-1 scale-110' : 'hover:bg-muted'
+                        }`}
+                        title={emoji}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    value={formIcon}
+                    onChange={(e) => setFormIcon(e.target.value)}
+                    placeholder="Or type any emoji..."
+                    maxLength={10}
+                  />
+                </Field>
+
+                <Field label="Color">
+                  {/* Preview */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <ColorSwatch color={formColor} size={32} />
+                    <code className="text-xs text-muted-foreground break-all flex-1">{formColor}</code>
+                  </div>
+
+                  {/* Color mode tabs */}
+                  <div className="grid grid-cols-3 gap-1 mb-3">
+                    {(['solid', 'gradient', 'animated'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setColorTab(tab)}
+                        className={`rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors ${
+                          colorTab === tab ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {tab === 'animated' ? 'Animated' : tab}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Solid colors */}
+                  {colorTab === 'solid' && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {SOLID_COLORS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => pickColor(c)}
+                            className={`h-8 w-8 rounded-full border-2 transition-all ${
+                              formColor === c ? 'border-foreground scale-110' : 'border-transparent'
+                            }`}
+                            style={{ backgroundColor: c }}
+                            aria-label={c}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customHex}
+                          onChange={(e) => pickColor(e.target.value)}
+                          className="h-8 w-10 rounded border cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={customHex}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setCustomHex(v)
+                            if (/^#[0-9a-fA-F]{6}$/.test(v)) pickColor(v)
+                          }}
+                          placeholder="#hex"
+                          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+
+                      {/* Save button */}
+                      <button
+                        type="button"
+                        onClick={handleSaveTemplate}
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                      >
+                        <Save size={13} /> Save current color as template
+                      </button>
+
+                      {/* Saved solid templates */}
+                      {savedTemplates.filter(t => t.type === 'solid').length > 0 && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-2">Saved</p>
+                          <div className="flex flex-wrap gap-2">
+                            {savedTemplates.filter(t => t.type === 'solid').map((tpl) => (
+                              <div key={tpl.id} className="relative group">
+                                <button
+                                  type="button"
+                                  onClick={() => pickColor(tpl.value)}
+                                  className={`h-8 w-8 rounded-full border-2 transition-all ${
+                                    formColor === tpl.value ? 'border-foreground scale-110' : 'border-transparent'
+                                  }`}
+                                  style={{ backgroundColor: tpl.value }}
+                                  title={tpl.label}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTemplate(tpl.id)}
+                                  className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] leading-none"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Gradient & Animated — presets + custom builder */}
+                  {(colorTab === 'gradient' || colorTab === 'animated') && (
+                    <div className="space-y-4">
+                      {/* Presets row */}
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">Presets</p>
+                        <div className="flex flex-wrap gap-2">
+                          {GRADIENT_PRESETS.map((g) => {
+                            const val = colorTab === 'animated' ? `animated:${g.value}` : g.value
+                            return (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => pickGradientPreset(val)}
+                                className={`h-10 w-14 rounded-lg border-2 transition-all ${
+                                  formColor === val ? 'border-foreground scale-110' : 'border-transparent'
+                                }`}
+                                style={{ background: g.value, backgroundSize: colorTab === 'animated' ? '200% 200%' : undefined }}
+                                title={g.label}
+                                aria-label={g.label}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Custom gradient builder */}
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <p className="text-xs font-medium text-muted-foreground">Custom</p>
+
+                        {/* Angle slider */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground shrink-0 w-10">Angle</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="360"
+                            value={gradientAngle}
+                            onChange={(e) => updateGradientAngle(Number(e.target.value))}
+                            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-foreground"
+                            style={{ background: `linear-gradient(to right, #000 ${gradientAngle / 360 * 100}%, #e5e7eb ${gradientAngle / 360 * 100}%)` }}
+                          />
+                          <span className="text-xs font-mono w-8 text-right">{gradientAngle}°</span>
+                        </div>
+
+                        {/* Color stops */}
+                        {gradientColors.map((hex, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-16 shrink-0">
+                              {i === 0 ? 'Start' : i === gradientColors.length - 1 ? 'End' : `Mid ${i}`}
+                            </span>
+                            <input
+                              type="color"
+                              value={hex}
+                              onChange={(e) => updateGradientColor(i, e.target.value)}
+                              className="h-8 w-10 rounded border cursor-pointer shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={hex}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                if (/^#[0-9a-fA-F]{0,6}$/.test(v)) updateGradientColor(i, v)
+                              }}
+                              className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                        ))}
+
+                        {/* Middle color controls */}
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => adjustMidColors(1)}
+                            disabled={midColorCount >= 4}
+                            className="text-xs text-primary hover:underline disabled:opacity-30 disabled:no-underline"
+                          >
+                            + Add middle color
+                          </button>
+                          {midColorCount > 0 && (
+                            <>
+                              <span className="text-xs text-muted-foreground">{midColorCount}/4</span>
+                              <button
+                                type="button"
+                                onClick={() => adjustMidColors(-1)}
+                                className="text-xs text-red-500 hover:underline"
+                              >
+                                – Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Save template button */}
+                      <button
+                        type="button"
+                        onClick={handleSaveTemplate}
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                      >
+                        <Save size={13} /> Save current as template
+                      </button>
+
+                      {/* Saved gradient/animated templates */}
+                      {savedTemplates.filter(t => t.type === colorTab).length > 0 && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-2">Saved</p>
+                          <div className="flex flex-wrap gap-2">
+                            {savedTemplates.filter(t => t.type === colorTab).map((tpl) => {
+                              const bg = tpl.value.startsWith('animated:') ? tpl.value.slice(9) : tpl.value
+                              return (
+                                <div key={tpl.id} className="relative group">
+                                  <button
+                                    type="button"
+                                    onClick={() => pickGradientPreset(tpl.value)}
+                                    className={`h-10 w-14 rounded-lg border-2 transition-all ${
+                                      formColor === tpl.value ? 'border-foreground scale-110' : 'border-transparent'
+                                    }`}
+                                    style={{ background: bg, backgroundSize: tpl.value.startsWith('animated:') ? '200% 200%' : undefined }}
+                                    title={tpl.label}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTemplate(tpl.id)}
+                                    className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] leading-none"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Field>
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button appearance="primary" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* Template name prompt */}
+      <PromptDialog
+        open={templatePromptOpen}
+        onOpenChange={setTemplatePromptOpen}
+        title="Save template"
+        message="Give this color template a name."
+        defaultValue={colorTab === 'solid' ? customHex : colorTab}
+        onConfirm={confirmSaveTemplate}
+      />
+
+      {/* Delete default category confirmation */}
+      <ConfirmDialog
+        open={deleteCatTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteCatTarget(null) }}
+        title="Delete default category?"
+        message={`"${deleteCatTarget?.name ?? ''}" is a default category. Delete anyway?`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => deleteCatTarget && confirmDeleteCat(deleteCatTarget)}
+      />
+    </div>
+  )
+}
+
+// ─── Exchange Rate API Settings (sub-component) ──────────────────────────────
+
+function FxApiSettings() {
+  const { settings, loading, fetchSettings, updateSettings } = useExchangeRateSettings()
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetchSettings()
+  }, [fetchSettings])
+
+  if (loading && !settings) return <p className="text-sm text-muted-foreground">Loading…</p>
+
+  return settings ? <FxApiSettingsForm settings={settings} updateSettings={updateSettings} saving={saving} setSaving={setSaving} /> : null
+}
+
+function FxApiSettingsForm({ settings, updateSettings, saving, setSaving }: {
+  settings: FxSettings
+  updateSettings: (patch: Partial<FxSettings>) => Promise<FxSettings>
+  saving: boolean
+  setSaving: (v: boolean) => void
+}) {
+  const [url, setUrl] = useState(settings.fx_api_url)
+  const [key, setKey] = useState(settings.fx_api_key)
+
+  const handleSave = async () => {
+    if (!url.trim()) {
+      toast.error('API URL is required.')
+      return
+    }
+    setSaving(true)
+    try {
+      const patch: Record<string, string> = { fx_api_url: url.trim() }
+      if (key) patch.fx_api_key = key
+      await updateSettings(patch)
+      toast.success('Exchange rate API settings saved.')
+    } catch {
+      toast.error('Failed to save API settings.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="fx-api-url">API URL</Label>
+        <Input
+          id="fx-api-url"
+          placeholder="https://api.frankfurter.app/latest"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="fx-api-key">API Key (optional)</Label>
+        <Input
+          id="fx-api-key"
+          type="password"
+          placeholder={settings.fx_api_key ? '(key set)' : 'Optional API key'}
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          autoComplete="off"
+        />
+      </div>
+      <Button appearance="primary" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save'}
+      </Button>
+    </div>
+  )
+}
+
 // ─── Exchange Rates Tab ───────────────────────────────────────────────────────
 
 function ExchangeRatesTab() {
@@ -329,6 +1011,15 @@ function ExchangeRatesTab() {
         </div>
       </Card>
 
+      {/* API configuration */}
+      <Card className="p-4 space-y-4">
+        <h3 className="text-base font-semibold">Exchange Rate API</h3>
+        <p className="text-sm text-muted-foreground">
+          Configure the API used to auto-fetch exchange rates. Defaults to Frankfurter.
+        </p>
+        <FxApiSettings />
+      </Card>
+
       {/* Rate history */}
       <div>
         <h3 className="mb-3 font-semibold">Rate History</h3>
@@ -357,6 +1048,264 @@ function ExchangeRatesTab() {
           </Table>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Banks Tab ───────────────────────────────────────────────────────────
+
+const BANK_NAMES = ['Etihad Bank', 'Bank of Jordan', 'Arab Bank', 'Jordan Islamic Bank', 'HBTF', 'Cairo Amman Bank', 'Other']
+
+function BanksTab() {
+  const { connections, loading, fetchConnections, createConnection, updateConnection, deleteConnection, syncConnection } = useBankConnections()
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formAuthType, setFormAuthType] = useState<'api_key' | 'basic'>('api_key')
+  const [formApiUrl, setFormApiUrl] = useState('')
+  const [formApiKey, setFormApiKey] = useState('')
+  const [formUsername, setFormUsername] = useState('')
+  const [formPassword, setFormPassword] = useState('')
+  const [formAccount, setFormAccount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [syncingId, setSyncingId] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetchConnections()
+  }, [fetchConnections])
+
+  const openCreate = () => {
+    setFormName('')
+    setFormAuthType('api_key')
+    setFormApiUrl('')
+    setFormApiKey('')
+    setFormUsername('')
+    setFormPassword('')
+    setFormAccount('')
+    setDialogOpen(true)
+  }
+
+  const handleCreate = async () => {
+    if (!formName.trim()) { toast.error('Bank name is required.'); return }
+    setSaving(true)
+    try {
+      const credentials: Record<string, string> = {}
+      if (formAuthType === 'basic') {
+        credentials.api_url = formApiUrl
+        credentials.username = formUsername
+        credentials.password = formPassword
+      } else {
+        credentials.api_url = formApiUrl
+        credentials.api_key = formApiKey
+      }
+      await createConnection({
+        bank_name: formName.trim(),
+        auth_type: formAuthType,
+        credentials,
+        account_number: formAccount.trim(),
+      })
+      toast.success('Bank connection created.')
+      setDialogOpen(false)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create connection.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggle = async (conn: BankConnection) => {
+    try {
+      await updateConnection(conn.id, { is_active: !conn.is_active })
+      toast.success(conn.is_active ? 'Disabled.' : 'Enabled.')
+    } catch {
+      toast.error('Failed to update.')
+    }
+  }
+
+  const handleDelete = async (conn: BankConnection) => {
+    try {
+      await deleteConnection(conn.id)
+      toast.success('Connection removed.')
+    } catch {
+      toast.error('Failed to delete.')
+    }
+  }
+
+  const handleSync = async (conn: BankConnection) => {
+    setSyncingId(conn.id)
+    try {
+      const result = await syncConnection(conn.id)
+      toast.success(`Synced: ${result.imported} imported, ${result.skipped} skipped.`)
+      await fetchConnections()
+    } catch {
+      toast.error('Sync failed.')
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const formatDate = (iso: string | null) => {
+    if (!iso) return 'Never'
+    return new Date(iso).toLocaleDateString()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Bank Connections</h2>
+        <Button appearance="primary" onClick={openCreate}>Add Bank</Button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : connections.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No bank connections yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {connections.map((conn) => (
+            <Card key={conn.id} className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{conn.bank_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {conn.account_number} · {conn.auth_type} · Last sync: {formatDate(conn.last_sync_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="small"
+                    appearance="outline"
+                    disabled={syncingId === conn.id}
+                    onClick={() => handleSync(conn)}
+                  >
+                    {syncingId === conn.id ? 'Syncing…' : 'Sync'}
+                  </Button>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={conn.is_active}
+                      onChange={() => handleToggle(conn)}
+                    />
+                    <div className="peer h-5 w-9 rounded-full bg-muted after:absolute after:left-[1px] after:top-[1px] after:h-[18px] after:w-[18px] after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white" />
+                  </label>
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    style={{ color: 'var(--colorStatusDangerForeground1)' }}
+                    onClick={() => handleDelete(conn)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={(_, data) => { if (!data.open) setDialogOpen(false) }}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Add Bank Connection</DialogTitle>
+            <DialogContent>
+              <div className="space-y-4 pt-2">
+                <Field label="Bank Name">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {BANK_NAMES.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setFormName(name === formName ? '' : name)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          formName === name ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-muted-foreground/50'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="Or type a custom name…"
+                  />
+                </Field>
+
+                <Field label="Account Number">
+                  <Input
+                    value={formAccount}
+                    onChange={(e) => setFormAccount(e.target.value)}
+                    placeholder="e.g. 1234567890"
+                  />
+                </Field>
+
+                <Field label="Auth Type">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['api_key', 'basic'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setFormAuthType(t)}
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                          formAuthType === t ? 'border-primary bg-primary/5 text-primary' : 'border-border'
+                        }`}
+                      >
+                        {t === 'api_key' ? 'API Key' : 'Basic Auth'}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="API URL">
+                  <Input
+                    value={formApiUrl}
+                    onChange={(e) => setFormApiUrl(e.target.value)}
+                    placeholder="https://api.bank.com/transactions"
+                  />
+                </Field>
+
+                {formAuthType === 'basic' ? (
+                  <>
+                    <Field label="Username">
+                      <Input
+                        value={formUsername}
+                        onChange={(e) => setFormUsername(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </Field>
+                    <Field label="Password">
+                      <Input
+                        type="password"
+                        value={formPassword}
+                        onChange={(e) => setFormPassword(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <Field label="API Key">
+                    <Input
+                      type="password"
+                      value={formApiKey}
+                      onChange={(e) => setFormApiKey(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </Field>
+                )}
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button appearance="primary" onClick={handleCreate} disabled={saving}>
+                {saving ? 'Saving…' : 'Add'}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   )
 }
@@ -737,8 +1686,15 @@ function AboutTab() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const VALID_TABS = ['api-keys', 'categories', 'exchange-rates', 'banks', 'security', 'ai', 'about'] as const
+
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('api-keys')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = VALID_TABS.includes(searchParams.get('tab') as any) ? searchParams.get('tab')! : 'api-keys'
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab }, { replace: true })
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -750,7 +1706,9 @@ export default function SettingsPage() {
           className="mb-4 flex-nowrap"
         >
           <Tab value="api-keys">API Keys</Tab>
+          <Tab value="categories">Categories</Tab>
           <Tab value="exchange-rates">Rates</Tab>
+          <Tab value="banks">Banks</Tab>
           <Tab value="security">Security</Tab>
           <Tab value="ai">AI</Tab>
           <Tab value="about">About</Tab>
@@ -758,7 +1716,9 @@ export default function SettingsPage() {
       </div>
 
       {activeTab === 'api-keys' && <ApiKeysTab />}
+      {activeTab === 'categories' && <CategoriesTab />}
       {activeTab === 'exchange-rates' && <ExchangeRatesTab />}
+      {activeTab === 'banks' && <BanksTab />}
       {activeTab === 'security' && <SecurityTab />}
       {activeTab === 'ai' && <AiTab />}
       {activeTab === 'about' && <AboutTab />}
