@@ -2,12 +2,22 @@ import { useState, useCallback, useEffect } from 'react'
 import { api } from '@/lib/api'
 
 export interface TransactionProposal {
-  amount_original: number
+  kind: 'transaction' | 'transfer'
+  intent: string
+  amount_original: string
   currency_original: 'JOD' | 'USD'
-  description: string
-  category: string
+  description: string | null
   confidence: number
-  transaction_date?: string
+  transaction_date?: string | null
+  // kind === 'transaction'
+  category?: string
+  wallet_id?: string | null
+  wallet_name?: string | null
+  // kind === 'transfer'
+  from_wallet_id?: string
+  from_wallet_name?: string
+  to_wallet_id?: string
+  to_wallet_name?: string
 }
 
 export interface SpendingContext {
@@ -17,8 +27,9 @@ export interface SpendingContext {
 }
 
 export interface WhisperResponse {
-  proposal_id: string
-  proposal: TransactionProposal
+  action: 'proposal' | 'reply'
+  proposal_id: string | null
+  proposal: TransactionProposal | null
   persona_message: string
   spending_context: SpendingContext | null
 }

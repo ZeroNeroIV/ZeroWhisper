@@ -14,6 +14,7 @@ import {
 } from '@fluentui/react-components'
 import type { TransactionFormData } from '@/types/transaction'
 import type { Category } from '@/types/category'
+import type { Wallet } from '@/types/wallet'
 
 interface TransactionFormProps {
   open: boolean
@@ -22,6 +23,32 @@ interface TransactionFormProps {
   onSubmit: (data: TransactionFormData) => Promise<void>
   title?: string
   categories: Category[]
+  wallets?: Wallet[]
+}
+
+function categoryLabel(cat: Category) {
+  return cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+}
+
+/** Top-level categories first, each followed by its indented sub-categories. */
+function CategoryOptions({ categories }: { categories: Category[] }) {
+  const selectable = categories.filter((c) => c.type !== 'transfer')
+  const roots = selectable.filter((c) => !c.parent_id)
+  const childrenOf = (id: string) => selectable.filter((c) => c.parent_id === id)
+  return (
+    <>
+      {roots.map((root) => (
+        <optgroup key={root.id} label={categoryLabel(root)}>
+          <option value={root.name}>{categoryLabel(root)}</option>
+          {childrenOf(root.id).map((child) => (
+            <option key={child.id} value={child.name}>
+              {'  '}↳ {categoryLabel(child)}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  )
 }
 
 function FormContent({
@@ -30,12 +57,14 @@ function FormContent({
   onOpenChange,
   title,
   categories,
+  wallets,
 }: {
   initialData?: Partial<TransactionFormData>
   onSubmit: (data: TransactionFormData) => Promise<void>
   onOpenChange: (open: boolean) => void
   title: string
   categories: Category[]
+  wallets: Wallet[]
 }) {
   const [amount, setAmount] = useState(
     initialData?.amount_original != null ? String(initialData.amount_original) : ''
@@ -44,6 +73,7 @@ function FormContent({
   const [category, setCategory] = useState(initialData?.category ?? '')
   const [description, setDescription] = useState(initialData?.description ?? '')
   const [date, setDate] = useState(initialData?.transaction_date ?? '')
+  const [walletId, setWalletId] = useState(initialData?.wallet_id ?? '')
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +98,7 @@ function FormContent({
         category,
         description: description || undefined,
         transaction_date: date,
+        wallet_id: walletId || undefined,
       })
       onOpenChange(false)
     } catch {
@@ -92,7 +123,7 @@ function FormContent({
             />
           </Field>
           <Field label="Currency">
-            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <Select value={currency} onChange={(e) => setCurrency(e.target.value as 'JOD' | 'USD')}>
               <option value="JOD">JOD</option>
               <option value="USD">USD</option>
             </Select>
@@ -100,13 +131,21 @@ function FormContent({
           <Field label="Category">
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">Select a category</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
-                </option>
-              ))}
+              <CategoryOptions categories={categories} />
             </Select>
           </Field>
+          {wallets.length > 0 && (
+            <Field label="Wallet (optional)">
+              <Select value={walletId ?? ''} onChange={(e) => setWalletId(e.target.value)}>
+                <option value="">No wallet</option>
+                {wallets.filter((w) => w.is_active).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.icon ? `${w.icon} ` : ''}{w.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Description (optional)">
             <Input
               type="text"
@@ -143,6 +182,7 @@ export function TransactionForm({
   onSubmit,
   title = 'Transaction',
   categories,
+  wallets = [],
 }: TransactionFormProps) {
   const [resetKey, setResetKey] = useState(0)
   const prevOpen = useRef(open)
@@ -163,6 +203,7 @@ export function TransactionForm({
           onOpenChange={onOpenChange}
           title={title}
           categories={categories}
+          wallets={wallets}
         />
       </DialogSurface>
     </Dialog>

@@ -8,6 +8,8 @@ interface Filters {
   category?: string
   date_from?: string
   date_to?: string
+  wallet_id?: string
+  type?: string
 }
 
 export function useTransactions() {

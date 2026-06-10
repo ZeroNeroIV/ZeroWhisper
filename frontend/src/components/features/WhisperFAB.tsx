@@ -254,7 +254,7 @@ export function WhisperFAB() {
             <header className="px-4 py-3 border-b flex items-center justify-between shrink-0">
               <div>
                 <h2 className="text-sm font-semibold">Whisper</h2>
-                <p className="text-xs text-muted-foreground">Log expenses by chat</p>
+                <p className="text-xs text-muted-foreground">Log expenses, transfer money, ask about balances</p>
               </div>
               <div className="flex items-center gap-1">
                 {hasMessages && (
@@ -290,8 +290,10 @@ export function WhisperFAB() {
 
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
               {messages.length === 0 && !loading && (
-                <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">
-                  Tell Whisper what you spent.
+                <div className="flex flex-col items-center justify-center h-28 text-muted-foreground text-xs gap-1 px-4 text-center">
+                  <span>Tell Whisper what you spent or earned,</span>
+                  <span>ask &ldquo;how much do I have?&rdquo;,</span>
+                  <span>or say &ldquo;move 100 from savings to cash&rdquo;.</span>
                 </div>
               )}
 
@@ -362,7 +364,7 @@ export function WhisperFAB() {
                   placeholder={
                     recording ? 'Listening… tap mic when done'
                     : transcribing ? 'Transcribing…'
-                    : 'e.g. 50 JOD on groceries'
+                    : 'e.g. 50 JOD on groceries · move 100 to savings'
                   }
                   disabled={loading || micBusy}
                   className="flex-1 text-sm"

@@ -16,9 +16,19 @@ import {
 import { Pencil, Trash2, Upload, Plus, Search, Filter, X } from 'lucide-react'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 import { useCategories } from '@/hooks/useCategories'
+import { useWallets } from '@/hooks/useWallets'
 import type { Category } from '@/types/category'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+
+function isTransfer(tx: Transaction) {
+  return tx.type === 'transfer_in' || tx.type === 'transfer_out'
+}
+
+function amountPrefix(tx: Transaction) {
+  if (tx.type === 'income' || tx.type === 'transfer_in') return '+'
+  return '−'
+}
 
 const PAGE_SIZE = 20
 
@@ -76,6 +86,21 @@ const SOURCE_TOOLTIPS: Record<string, string> = {
   csv: 'Imported from a CSV file',
 }
 
+function TypeBadge({ tx }: { tx: Transaction }) {
+  const styles: Record<string, { label: string; className: string }> = {
+    income: { label: 'Income', className: 'bg-green-100 text-green-700' },
+    expense: { label: 'Expense', className: 'bg-red-100 text-red-700' },
+    transfer_in: { label: 'Transfer in', className: 'bg-indigo-100 text-indigo-700' },
+    transfer_out: { label: 'Transfer out', className: 'bg-indigo-100 text-indigo-700' },
+  }
+  const s = styles[tx.type] ?? { label: tx.type, className: 'bg-gray-100 text-gray-600' }
+  return (
+    <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight ${s.className}`}>
+      {s.label}
+    </span>
+  )
+}
+
 function SourceBadge({ source }: { source: string }) {
   const styles: Record<string, { label: string; className: string }> = {
     manual: { label: 'Manual', className: 'bg-blue-100 text-blue-700' },
@@ -94,16 +119,20 @@ export default function TransactionsPage() {
   const { transactions, total, loading, error, fetchTransactions, createTransaction, updateTransaction, deleteTransaction } =
     useTransactions()
   const { categories, fetchCategories } = useCategories()
+  const { wallets, fetchWallets } = useWallets()
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
+  useEffect(() => { fetchWallets(true) }, [fetchWallets])
 
   const [page, setPage] = useState(1)
   const [filterCategory, setFilterCategory] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterWallet, setFilterWallet] = useState('')
   const [pendingCategory, setPendingCategory] = useState('')
   const [pendingDateFrom, setPendingDateFrom] = useState('')
   const [pendingDateTo, setPendingDateTo] = useState('')
+  const [pendingWallet, setPendingWallet] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [pendingSearch, setPendingSearch] = useState('')
   const [showMobileFilters, setShowMobileFilters] = useState(false)
@@ -123,17 +152,19 @@ export default function TransactionsPage() {
       category?: string
       date_from?: string
       date_to?: string
+      wallet_id?: string
     } = { page: p, page_size: PAGE_SIZE }
     if (filterCategory) filters.category = filterCategory
     if (filterDateFrom) filters.date_from = filterDateFrom
     if (filterDateTo) filters.date_to = filterDateTo
+    if (filterWallet) filters.wallet_id = filterWallet
     fetchTransactions(filters)
   }
 
   useEffect(() => {
     loadPage(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, filterCategory, filterDateFrom, filterDateTo])
+  }, [page, filterCategory, filterDateFrom, filterDateTo, filterWallet])
 
   const handleApplyFilters = () => {
     if (pendingDateFrom && pendingDateTo && pendingDateTo < pendingDateFrom) {
@@ -143,6 +174,7 @@ export default function TransactionsPage() {
     setFilterCategory(pendingCategory)
     setFilterDateFrom(pendingDateFrom)
     setFilterDateTo(pendingDateTo)
+    setFilterWallet(pendingWallet)
     setSearchQuery(pendingSearch)
     setPage(1)
   }
@@ -151,15 +183,19 @@ export default function TransactionsPage() {
     setPendingCategory('')
     setPendingDateFrom('')
     setPendingDateTo('')
+    setPendingWallet('')
     setPendingSearch('')
     setFilterCategory('')
     setFilterDateFrom('')
     setFilterDateTo('')
+    setFilterWallet('')
     setSearchQuery('')
     setPage(1)
   }
 
-  const hasActiveFilters = filterCategory || filterDateFrom || filterDateTo || searchQuery
+  const walletName = (id: string | null) => wallets.find((w) => w.id === id)?.name
+
+  const hasActiveFilters = filterCategory || filterDateFrom || filterDateTo || filterWallet || searchQuery
 
   // Client-side description filter on the current page
   const filteredTransactions = useMemo(() => {
@@ -209,6 +245,7 @@ export default function TransactionsPage() {
         category: editTarget.category,
         description: editTarget.description ?? '',
         transaction_date: editTarget.transaction_date,
+        wallet_id: editTarget.wallet_id,
       }
     : undefined
 
@@ -253,6 +290,17 @@ export default function TransactionsPage() {
             onChange={(e) => setPendingDateTo(e.target.value)}
           />
         </div>
+        {wallets.length > 0 && (
+          <div className="min-w-0 flex-1 max-w-[180px]">
+            <p className="text-xs text-muted-foreground mb-1">Wallet</p>
+            <Select value={pendingWallet} onChange={(e) => setPendingWallet(e.target.value)}>
+              <option value="">All</option>
+              {wallets.map((w) => (
+                <option key={w.id} value={w.id}>{w.icon ? `${w.icon} ` : ''}{w.name}</option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div className="min-w-0 flex-[2] max-w-[240px]">
           <p className="text-xs text-muted-foreground mb-1">
             <Search size={12} className="inline mr-1" />
@@ -368,20 +416,28 @@ export default function TransactionsPage() {
                   <div key={tx.id} className="rounded-lg border p-3 space-y-1.5 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-muted-foreground shrink-0">{tx.transaction_date}</span>
-                      {renderCategoryText(tx.category, categories)}
+                      <div className="flex items-center gap-1.5">
+                        <TypeBadge tx={tx} />
+                        {renderCategoryText(tx.category, categories)}
+                      </div>
                     </div>
                     <p className="text-sm truncate">{tx.description ?? '—'}</p>
+                    {tx.wallet_id && walletName(tx.wallet_id) && (
+                      <p className="text-xs text-muted-foreground">👛 {walletName(tx.wallet_id)}</p>
+                    )}
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-sm font-semibold">
-                          {parseFloat(tx.amount_original).toFixed(2)} {tx.currency_original}
+                          {amountPrefix(tx)}{parseFloat(tx.amount_original).toFixed(2)} {tx.currency_original}
                         </span>
                         <span className="text-xs text-muted-foreground ml-2">
                           = {parseFloat(tx.amount_base).toFixed(2)} JOD
                         </span>
                       </div>
                       <div className="flex items-center gap-0.5">
-                        <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit" />
+                        {!isTransfer(tx) && (
+                          <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit" />
+                        )}
                         <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(tx)} aria-label="Delete" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
                       </div>
                     </div>
@@ -397,6 +453,8 @@ export default function TransactionsPage() {
                       <TableHeaderCell className="whitespace-nowrap">Date</TableHeaderCell>
                       <TableHeaderCell>Description</TableHeaderCell>
                       <TableHeaderCell>Category</TableHeaderCell>
+                      <TableHeaderCell>Type</TableHeaderCell>
+                      <TableHeaderCell>Wallet</TableHeaderCell>
                       <TableHeaderCell className="whitespace-nowrap">Source</TableHeaderCell>
                       <TableHeaderCell className="text-right whitespace-nowrap">Amount (orig)</TableHeaderCell>
                       <TableHeaderCell className="text-right whitespace-nowrap">Amount (JOD)</TableHeaderCell>
@@ -416,9 +474,13 @@ export default function TransactionsPage() {
                           </span>
                         </TableCell>
                         <TableCell>{renderCategoryText(tx.category, categories)}</TableCell>
+                        <TableCell><TypeBadge tx={tx} /></TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          {walletName(tx.wallet_id) ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell><SourceBadge source={tx.source} /></TableCell>
                         <TableCell className="text-right font-mono text-sm whitespace-nowrap">
-                          {parseFloat(tx.amount_original).toFixed(2)}
+                          {amountPrefix(tx)}{parseFloat(tx.amount_original).toFixed(2)}
                           <span className="text-muted-foreground ml-1 text-xs">{tx.currency_original}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm whitespace-nowrap">
@@ -427,7 +489,9 @@ export default function TransactionsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end">
-                            <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit transaction" />
+                            {!isTransfer(tx) && (
+                              <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit transaction" />
+                            )}
                             <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(tx)} aria-label="Delete transaction" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
                           </div>
                         </TableCell>
@@ -505,6 +569,7 @@ export default function TransactionsPage() {
         onSubmit={handleCreate}
         title="Add Transaction"
         categories={categories}
+        wallets={wallets}
       />
 
       {/* Edit Transaction Dialog */}
@@ -515,6 +580,7 @@ export default function TransactionsPage() {
         onSubmit={handleUpdate}
         title="Edit Transaction"
         categories={categories}
+        wallets={wallets}
       />
 
       {/* CSV Import Dialog */}
@@ -529,7 +595,11 @@ export default function TransactionsPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
         title="Delete transaction?"
-        message={`Are you sure you want to delete the transaction from ${deleteTarget?.transaction_date ?? 'unknown date'}?`}
+        message={
+          deleteTarget && isTransfer(deleteTarget)
+            ? 'This is one leg of a wallet transfer — deleting it removes both legs and restores both wallet balances. Continue?'
+            : `Are you sure you want to delete the transaction from ${deleteTarget?.transaction_date ?? 'unknown date'}?`
+        }
         confirmLabel="Delete"
         destructive
         onConfirm={confirmDelete}

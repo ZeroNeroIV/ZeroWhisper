@@ -1,3 +1,5 @@
+export type TransactionType = 'expense' | 'income' | 'transfer_out' | 'transfer_in'
+
 export interface Transaction {
   id: string
   user_id: string
@@ -9,6 +11,9 @@ export interface Transaction {
   description: string | null
   transaction_date: string
   source: string
+  type: TransactionType
+  wallet_id: string | null
+  transfer_id: string | null
   created_at: string
 }
 
@@ -18,11 +23,7 @@ export interface TransactionFormData {
   category: string
   description?: string
   transaction_date: string
+  wallet_id?: string | null
 }
-
-export const VALID_CATEGORIES = [
-  'Food', 'Transport', 'Housing', 'Utilities', 'Entertainment',
-  'Shopping', 'Health', 'Education', 'Income', 'Other'
-] as const
 
 export const VALID_CURRENCIES = ['JOD', 'USD'] as const

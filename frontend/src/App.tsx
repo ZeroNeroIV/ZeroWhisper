@@ -7,6 +7,7 @@ import LoginPage from '@/pages/LoginPage'
 import SetupPage from '@/pages/SetupPage'
 import DashboardPage from '@/pages/DashboardPage'
 import TransactionsPage from '@/pages/TransactionsPage'
+import WalletsPage from '@/pages/WalletsPage'
 import VisualizationsPage from '@/pages/VisualizationsPage'
 import SettingsPage from '@/pages/SettingsPage'
 import { Toaster } from 'sonner'
@@ -33,6 +34,7 @@ function ThemedApp() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/wallets" element={<WalletsPage />} />
               <Route path="/visualizations" element={<VisualizationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
