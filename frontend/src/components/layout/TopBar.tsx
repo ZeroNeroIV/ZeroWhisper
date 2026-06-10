@@ -1,12 +1,6 @@
 import { useAuth } from '@/hooks/useAuth'
-import {
-  Menu,
-  MenuTrigger,
-  MenuPopover,
-  MenuList,
-  MenuItem,
-  Avatar,
-} from '@fluentui/react-components'
+import { Menu, MenuTrigger, MenuPopover, MenuList, MenuItem } from '@/components/ui/Menu'
+import { Avatar } from '@/components/ui/Avatar'
 import { LogOut, Menu as MenuIcon } from 'lucide-react'
 
 export function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
@@ -27,15 +21,16 @@ export function TopBar({ onMenuClick }: { onMenuClick?: () => void }) {
       <div className="hidden md:block" />
 
       <Menu>
-        <MenuTrigger disableButtonEnhancement>
+        <MenuTrigger>
           <button type="button" className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <Avatar name={username ?? 'User'} size={32} color="brand" />
+            <Avatar name={username ?? 'User'} size={32} />
             <span className="text-sm hidden sm:inline">{username}</span>
           </button>
         </MenuTrigger>
         <MenuPopover>
           <MenuList>
-            <MenuItem icon={<LogOut size={16} />} onClick={logout}>
+            <MenuItem onClick={logout}>
+              <LogOut size={16} className="inline mr-2" />
               Logout
             </MenuItem>
           </MenuList>

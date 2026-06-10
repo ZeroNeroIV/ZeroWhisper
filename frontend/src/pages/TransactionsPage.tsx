@@ -1,23 +1,16 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useTransactions } from '@/hooks/useTransactions'
 import { TransactionForm } from '@/components/features/TransactionForm'
 import { CsvImportDialog } from '@/components/features/CsvImportDialog'
-import {
-  Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHeaderCell,
-  TableCell,
-  Input,
-  Select,
-} from '@fluentui/react-components'
+import { Button } from '@/components/ui/Button'
+import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '@/components/ui/Table'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Pencil, Trash2, Upload, Plus, Search, Filter, X } from 'lucide-react'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 import { useCategories } from '@/hooks/useCategories'
 import { useWallets } from '@/hooks/useWallets'
-import type { Category } from '@/types/category'
+import { renderCategoryLabel } from '@/lib/category'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
@@ -31,54 +24,6 @@ function amountPrefix(tx: Transaction) {
 }
 
 const PAGE_SIZE = 20
-
-function renderCategoryText(categoryName: string, categories: Category[]): React.ReactNode {
-  const cat = categories.find((c) => c.name === categoryName)
-  const color = cat?.color
-  const icon = cat?.icon
-
-  const textEl = (() => {
-    if (!color) {
-      return <span className="text-xs font-medium text-muted-foreground">{categoryName}</span>
-    }
-    if (color.startsWith('animated:')) {
-      const gradient = color.slice('animated:'.length)
-      return (
-        <span
-          className="text-xs font-medium animate-gradient"
-          style={{ background: gradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}
-        >
-          {categoryName}
-        </span>
-      )
-    }
-    if (color.startsWith('linear-gradient') || color.startsWith('radial-gradient')) {
-      return (
-        <span
-          className="text-xs font-medium"
-          style={{ background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}
-        >
-          {categoryName}
-        </span>
-      )
-    }
-    return (
-      <span className="text-xs font-medium" style={{ color }}>
-        {categoryName}
-      </span>
-    )
-  })()
-
-  if (icon) {
-    return (
-      <>
-        <span className="inline md:hidden text-base">{icon}</span>
-        <span className="hidden md:inline">{textEl}</span>
-      </>
-    )
-  }
-  return textEl
-}
 
 const SOURCE_TOOLTIPS: Record<string, string> = {
   manual: 'Added manually via the form',
@@ -146,25 +91,19 @@ export default function TransactionsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadPage = (p: number) => {
-    const filters: {
-      page: number
-      page_size: number
-      category?: string
-      date_from?: string
-      date_to?: string
-      wallet_id?: string
-    } = { page: p, page_size: PAGE_SIZE }
+    const filters: Record<string, string | number> = { page: p, page_size: PAGE_SIZE }
     if (filterCategory) filters.category = filterCategory
     if (filterDateFrom) filters.date_from = filterDateFrom
     if (filterDateTo) filters.date_to = filterDateTo
     if (filterWallet) filters.wallet_id = filterWallet
+    if (searchQuery) filters.q = searchQuery
     fetchTransactions(filters)
   }
 
   useEffect(() => {
     loadPage(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, filterCategory, filterDateFrom, filterDateTo, filterWallet])
+  }, [page, filterCategory, filterDateFrom, filterDateTo, filterWallet, searchQuery])
 
   const handleApplyFilters = () => {
     if (pendingDateFrom && pendingDateTo && pendingDateTo < pendingDateFrom) {
@@ -197,12 +136,6 @@ export default function TransactionsPage() {
 
   const hasActiveFilters = filterCategory || filterDateFrom || filterDateTo || filterWallet || searchQuery
 
-  // Client-side description filter on the current page
-  const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return transactions
-    const q = searchQuery.toLowerCase()
-    return transactions.filter((tx) => tx.description?.toLowerCase().includes(q))
-  }, [transactions, searchQuery])
 
   const handleCreate = async (data: TransactionFormData) => {
     await createTransaction(data)
@@ -255,8 +188,12 @@ export default function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
         <div className="flex gap-2">
-          <Button appearance="outline" icon={<Upload size={16} />} onClick={() => setImportOpen(true)} title="Import CSV" aria-label="Import CSV" />
-          <Button appearance="primary" icon={<Plus size={16} />} onClick={() => setAddOpen(true)} title="Add Transaction" aria-label="Add Transaction" />
+          <Button appearance="secondary" onClick={() => setImportOpen(true)} title="Import CSV" aria-label="Import CSV">
+            <Upload size={16} />
+          </Button>
+          <Button appearance="primary" onClick={() => setAddOpen(true)} title="Add Transaction" aria-label="Add Transaction">
+            <Plus size={16} />
+          </Button>
         </div>
       </div>
 
@@ -318,7 +255,7 @@ export default function TransactionsPage() {
             Apply
           </Button>
           {hasActiveFilters && (
-            <Button appearance="outline" onClick={handleClearFilters} title="Clear filters" aria-label="Clear filters">
+            <Button appearance="secondary" onClick={handleClearFilters} title="Clear filters" aria-label="Clear filters">
               <X size={14} />
             </Button>
           )}
@@ -328,23 +265,23 @@ export default function TransactionsPage() {
       {/* ── Mobile Filters ── */}
       <div className="md:hidden">
         <Button
-          appearance="outline"
-          icon={<Filter size={14} />}
+          appearance="secondary"
           onClick={() => setShowMobileFilters((v) => !v)}
-          style={{ width: '100%' }}
+          className="w-full"
           size="small"
         >
+          <Filter size={14} />
           {showMobileFilters ? 'Hide Filters' : 'Filters'}{hasActiveFilters ? ' · Active' : ''}
         </Button>
         {showMobileFilters && (
           <div className="mt-2 space-y-2 border rounded-md p-3 bg-muted/20">
             <div>
               <p className="text-xs text-muted-foreground mb-1">Category</p>
-              <Select
-                value={pendingCategory}
-                onChange={(e) => setPendingCategory(e.target.value)}
-                style={{ width: '100%' }}
-              >
+                <Select
+                  value={pendingCategory}
+                  onChange={(e) => setPendingCategory(e.target.value)}
+                  className="w-full"
+                >
                 <option value="">All categories</option>
                 {categories.map((cat) => (
                   <option key={cat.id} value={cat.name}>{cat.icon ? `${cat.icon} ${cat.name}` : cat.name}</option>
@@ -381,7 +318,7 @@ export default function TransactionsPage() {
               <div className="flex gap-1 pt-5">
                 <Button appearance="primary" size="small" onClick={handleApplyFilters}>Go</Button>
                 {hasActiveFilters && (
-                  <Button appearance="outline" size="small" onClick={handleClearFilters} aria-label="Clear filters"><X size={12} /></Button>
+                  <Button appearance="secondary" size="small" onClick={handleClearFilters} aria-label="Clear filters"><X size={12} /></Button>
                 )}
               </div>
             </div>
@@ -404,7 +341,7 @@ export default function TransactionsPage() {
       {/* Transactions list */}
       {!loading && !error && (
         <>
-          {filteredTransactions.length === 0 ? (
+          {transactions.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               No transactions found.
             </div>
@@ -412,13 +349,13 @@ export default function TransactionsPage() {
             <>
               {/* ── Mobile Cards ── */}
               <div className="md:hidden space-y-2">
-                {filteredTransactions.map((tx) => (
+                {transactions.map((tx) => (
                   <div key={tx.id} className="rounded-lg border p-3 space-y-1.5 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-muted-foreground shrink-0">{tx.transaction_date}</span>
                       <div className="flex items-center gap-1.5">
                         <TypeBadge tx={tx} />
-                        {renderCategoryText(tx.category, categories)}
+                        {renderCategoryLabel(tx.category, categories)}
                       </div>
                     </div>
                     <p className="text-sm truncate">{tx.description ?? '—'}</p>
@@ -436,9 +373,13 @@ export default function TransactionsPage() {
                       </div>
                       <div className="flex items-center gap-0.5">
                         {!isTransfer(tx) && (
-                          <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit" />
+                          <Button appearance="ghost" onClick={() => handleEditOpen(tx)} aria-label="Edit">
+                            <Pencil size={15} />
+                          </Button>
                         )}
-                        <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(tx)} aria-label="Delete" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+                        <Button appearance="ghost" onClick={() => handleDelete(tx)} aria-label="Delete" className="text-red-500">
+                          <Trash2 size={15} />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -462,7 +403,7 @@ export default function TransactionsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTransactions.map((tx) => (
+                    {transactions.map((tx) => (
                       <TableRow
                         key={tx.id}
                         className="hover:bg-muted/50 transition-colors"
@@ -473,7 +414,7 @@ export default function TransactionsPage() {
                             {tx.description ?? '—'}
                           </span>
                         </TableCell>
-                        <TableCell>{renderCategoryText(tx.category, categories)}</TableCell>
+                        <TableCell>{renderCategoryLabel(tx.category, categories)}</TableCell>
                         <TableCell><TypeBadge tx={tx} /></TableCell>
                         <TableCell className="text-sm whitespace-nowrap">
                           {walletName(tx.wallet_id) ?? <span className="text-muted-foreground">—</span>}
@@ -490,9 +431,13 @@ export default function TransactionsPage() {
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end">
                             {!isTransfer(tx) && (
-                              <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => handleEditOpen(tx)} aria-label="Edit transaction" />
+                              <Button appearance="ghost" onClick={() => handleEditOpen(tx)} aria-label="Edit transaction">
+                                <Pencil size={15} />
+                              </Button>
                             )}
-                            <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(tx)} aria-label="Delete transaction" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+                            <Button appearance="ghost" onClick={() => handleDelete(tx)} aria-label="Delete transaction" className="text-red-500">
+                              <Trash2 size={15} />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -508,15 +453,15 @@ export default function TransactionsPage() {
             <span className="text-xs text-muted-foreground hidden md:inline">
               {total === 0
                 ? 'No results'
-                : filteredTransactions.length !== transactions.length
-                  ? `${filteredTransactions.length} of ${total} transactions`
+                : transactions.length !== transactions.length
+                  ? `${transactions.length} of ${total} transactions`
                   : `${total} transaction${total !== 1 ? 's' : ''}`
               }
             </span>
             {totalPages > 1 && (
               <div className="flex items-center gap-2 mx-auto md:mx-0 md:ml-auto">
                 <Button
-                  appearance="outline"
+                  appearance="secondary"
                   size="small"
                   onClick={() => setPage(1)}
                   disabled={page <= 1}
@@ -526,7 +471,7 @@ export default function TransactionsPage() {
                   «
                 </Button>
                 <Button
-                  appearance="outline"
+                  appearance="secondary"
                   size="small"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
@@ -538,7 +483,7 @@ export default function TransactionsPage() {
                   <span className="hidden md:inline">Page </span>{page}<span className="hidden md:inline"> / {totalPages}</span>
                 </span>
                 <Button
-                  appearance="outline"
+                  appearance="secondary"
                   size="small"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
@@ -547,7 +492,7 @@ export default function TransactionsPage() {
                   Next →
                 </Button>
                 <Button
-                  appearance="outline"
+                  appearance="secondary"
                   size="small"
                   onClick={() => setPage(totalPages)}
                   disabled={page >= totalPages}

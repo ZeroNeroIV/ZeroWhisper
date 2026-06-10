@@ -60,13 +60,18 @@ def client(test_db):
         pytest.skip("SQLCipher not available")
 
     from app.main import app
-    from app.database import get_session
+    from app.api import deps
+    from app.infrastructure.database import DatabaseManager
+
+    # Use the same db as the container
+    _test_db_manager = DatabaseManager("data")
+    _test_db_manager.initialize_encrypted(test_db, TEST_KEY)
 
     def get_test_session():
-        for session in _db_manager.get_session():
+        for session in _test_db_manager.get_session():
             yield session
 
-    app.dependency_overrides[get_session] = get_test_session
+    app.dependency_overrides[deps.get_session] = get_test_session
     with TestClient(app, raise_server_exceptions=True) as c:
         # Sync Container vault state with test DB state so the
         # setup-guard middleware doesn't block requests

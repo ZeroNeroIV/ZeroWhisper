@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Card, Button } from '@fluentui/react-components'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
 import type { WhisperResponse } from '@/hooks/useWhisper'
 import { useCategories } from '@/hooks/useCategories'
+import { renderCategoryLabel } from '@/lib/category'
 
 interface Props {
   messageId: string
@@ -99,7 +101,7 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
             <>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Category</span>
-                {renderCategory(proposal.category ?? '', categories)}
+                {renderCategoryLabel(proposal.category ?? '', categories)}
               </div>
               {proposal.wallet_name && (
                 <div className="flex items-center justify-between">
@@ -145,7 +147,7 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
             </Button>
             <Button
               size="small"
-              appearance="outline"
+              appearance="secondary"
               disabled={busy}
               onClick={handleReject}
             >
@@ -158,19 +160,4 @@ export function TransactionProposalCard({ messageId, response, status, onConfirm
   )
 }
 
-function renderCategory(categoryName: string, categories: ReturnType<typeof useCategories>['categories']) {
-  const cat = categories.find((c) => c.name === categoryName)
-  const color = cat?.color
-  const icon = cat?.icon
-  const textEl = !color
-    ? <span className="text-xs font-medium text-muted-foreground">{categoryName}</span>
-    : color.startsWith('animated:')
-      ? <span className="text-xs font-medium animate-gradient" style={{ background: color.slice('animated:'.length), WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}>{categoryName}</span>
-      : color.startsWith('linear-gradient') || color.startsWith('radial-gradient')
-        ? <span className="text-xs font-medium" style={{ background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}>{categoryName}</span>
-        : <span className="text-xs font-medium" style={{ color }}>{categoryName}</span>
-  if (icon) {
-    return <><span className="inline md:hidden text-base">{icon}</span><span className="hidden md:inline">{textEl}</span></>
-  }
-  return textEl
-}
+

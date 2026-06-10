@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { api } from '@/lib/api'
+import { apiErrorDetail } from '@/lib/api'
 
 export interface BankConnection {
   id: number
@@ -14,12 +15,16 @@ export interface BankConnection {
 export function useBankConnections() {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchConnections = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const { data } = await api.get<BankConnection[]>('/api/banks')
       setConnections(data)
+    } catch (err) {
+      setError(apiErrorDetail(err) || 'Failed to load bank connections')
     } finally {
       setLoading(false)
     }
@@ -52,5 +57,5 @@ export function useBankConnections() {
     return data
   }
 
-  return { connections, loading, fetchConnections, createConnection, updateConnection, deleteConnection, syncConnection }
+  return { connections, loading, error, fetchConnections, createConnection, updateConnection, deleteConnection, syncConnection }
 }

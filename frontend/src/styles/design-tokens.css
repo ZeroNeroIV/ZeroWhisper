@@ -1,0 +1,127 @@
+:root {
+  /* Surface palette */
+  --surface: #131313;
+  --surface-dim: #131313;
+  --surface-bright: #3a3939;
+  --surface-container-lowest: #0e0e0e;
+  --surface-container-low: #1c1b1b;
+  --surface-container: #201f1f;
+  --surface-container-high: #2a2a2a;
+  --surface-container-highest: #353534;
+  --on-surface: #e5e2e1;
+  --on-surface-variant: #b9cacb;
+  --inverse-surface: #e5e2e1;
+  --inverse-on-surface: #313030;
+
+  /* Primary (Electric Cyan) */
+  --primary: #00f0ff;
+  --on-primary: #00363a;
+  --primary-container: #00f0ff;
+  --on-primary-container: #006970;
+  --primary-fixed: #7df4ff;
+  --primary-fixed-dim: #00dbe9;
+  --on-primary-fixed: #002022;
+  --on-primary-fixed-variant: #004f54;
+  --inverse-primary: #006970;
+
+  /* Secondary (Deep Cobalt) */
+  --secondary: #0356ff;
+  --on-secondary: #002780;
+  --secondary-container: #0356ff;
+  --on-secondary-container: #e4e7ff;
+  --secondary-fixed: #dce1ff;
+  --secondary-fixed-dim: #b6c4ff;
+  --on-secondary-fixed: #001551;
+  --on-secondary-fixed-variant: #0039b3;
+
+  /* Tertiary */
+  --tertiary: #fed639;
+  --on-tertiary: #3b2f00;
+  --tertiary-container: #fed639;
+  --on-tertiary-container: #715d00;
+  --tertiary-fixed: #ffe179;
+  --tertiary-fixed-dim: #eac324;
+  --on-tertiary-fixed: #231b00;
+  --on-tertiary-fixed-variant: #554500;
+
+  /* Error */
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+
+  /* Outline */
+  --outline: #849495;
+  --outline-variant: #3b4949;
+
+  /* Background */
+  --background: #000000;
+  --on-background: #e5e2e1;
+
+  /* Surface variant */
+  --surface-variant: #353534;
+
+  /* Elevation levels — sharp outlines, no shadows */
+  --elevation-0: #000000;
+  --elevation-1-bg: #121212;
+  --elevation-1-border: #222222;
+  --elevation-2-bg: #1a1a1a;
+  --elevation-2-border: rgba(0, 240, 255, 0.3);
+
+  /* Focus / interaction */
+  --focus-border: #00f0ff;
+
+  /* Functional colors */
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --info: #00f0ff;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Typography tokens */
+  --display-lg-size: 48px;
+  --display-lg-weight: 700;
+  --display-lg-line: 1.1;
+  --display-lg-letter: -0.02em;
+
+  --headline-lg-size: 32px;
+  --headline-lg-weight: 600;
+  --headline-lg-line: 1.2;
+
+  --headline-lg-mobile-size: 24px;
+  --headline-lg-mobile-weight: 600;
+  --headline-lg-mobile-line: 1.2;
+
+  --currency-primary-size: 24px;
+  --currency-primary-weight: 500;
+  --currency-primary-line: 1.0;
+
+  --currency-secondary-size: 14px;
+  --currency-secondary-weight: 400;
+  --currency-secondary-line: 1.0;
+
+  --body-md-size: 16px;
+  --body-md-weight: 400;
+  --body-md-line: 1.6;
+
+  --label-caps-size: 12px;
+  --label-caps-weight: 700;
+  --label-caps-line: 1.0;
+  --label-caps-letter: 0.1em;
+
+  --code-data-size: 14px;
+  --code-data-weight: 400;
+  --code-data-line: 1.4;
+
+  /* Spacing */
+  --unit: 4px;
+  --container-margin: 24px;
+  --gutter: 16px;
+  --stack-sm: 8px;
+  --stack-md: 16px;
+  --stack-lg: 32px;
+  --whisper-input-height: 64px;
+}

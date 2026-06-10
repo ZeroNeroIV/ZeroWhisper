@@ -1,17 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogBody,
-  DialogContent,
-  DialogSurface,
-  DialogTitle,
-  Field,
-  Input,
-  Select,
-  Switch,
-} from '@fluentui/react-components'
+import { Button } from '@/components/ui/Button'
+import { Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle } from '@/components/ui/Dialog'
+import { Field } from '@/components/ui/Field'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Switch } from '@/components/ui/Switch'
 import { ArrowLeftRight, Archive, ArchiveRestore, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useWallets } from '@/hooks/useWallets'
@@ -89,18 +82,19 @@ export default function WalletsPage() {
           <Switch
             label="Show archived"
             checked={showArchived}
-            onChange={(_, data) => setShowArchived(!!data.checked)}
+            onChange={(checked) => setShowArchived(checked)}
           />
           <Button
-            appearance="outline"
-            icon={<ArrowLeftRight size={16} />}
+            appearance="secondary"
             onClick={() => setTransferOpen(true)}
             disabled={activeWallets.length < 2}
             title={activeWallets.length < 2 ? 'You need at least two wallets to transfer' : 'Transfer between wallets'}
           >
+            <ArrowLeftRight size={16} />
             Transfer
           </Button>
-          <Button appearance="primary" icon={<Plus size={16} />} onClick={() => setDialog({ open: true, editing: null })}>
+          <Button appearance="primary" onClick={() => setDialog({ open: true, editing: null })}>
+            <Plus size={16} />
             Add Wallet
           </Button>
         </div>
@@ -146,25 +140,28 @@ export default function WalletsPage() {
                     <span className="text-xs text-muted-foreground">{wallet.currency} wallet</span>
                     <div className="flex items-center gap-0.5">
                       <Button
-                        appearance="transparent"
-                        icon={<Pencil size={14} />}
+                        appearance="ghost"
                         onClick={() => setDialog({ open: true, editing: wallet })}
                         aria-label="Edit wallet"
-                      />
+                      >
+                        <Pencil size={14} />
+                      </Button>
                       <Button
-                        appearance="transparent"
-                        icon={wallet.is_active ? <Archive size={14} /> : <ArchiveRestore size={14} />}
+                        appearance="ghost"
                         onClick={() => handleArchiveToggle(wallet)}
                         aria-label={wallet.is_active ? 'Archive wallet' : 'Restore wallet'}
                         title={wallet.is_active ? 'Archive' : 'Restore'}
-                      />
+                      >
+                        {wallet.is_active ? <Archive size={14} /> : <ArchiveRestore size={14} />}
+                      </Button>
                       <Button
-                        appearance="transparent"
-                        icon={<Trash2 size={14} />}
+                        appearance="ghost"
                         onClick={() => setDeleteTarget(wallet)}
                         aria-label="Delete wallet"
-                        style={{ color: 'var(--colorStatusDangerForeground1)' }}
-                      />
+                        className="text-red-500"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -260,7 +257,7 @@ function WalletDialog({
   }
 
   return (
-    <Dialog open={state.open} onOpenChange={(_, data) => { if (!data.open) onClose() }}>
+    <Dialog open={state.open} onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>{editing ? 'Edit Wallet' : 'Add Wallet'}</DialogTitle>
@@ -305,7 +302,7 @@ function WalletDialog({
             </div>
           </DialogContent>
           <DialogActions>
-            <Button appearance="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button appearance="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button appearance="primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </Button>
@@ -369,7 +366,7 @@ function TransferDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_, data) => { if (!data.open) onClose() }}>
+    <Dialog open={open} onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>Transfer Between Wallets</DialogTitle>
@@ -415,7 +412,7 @@ function TransferDialog({
             </div>
           </DialogContent>
           <DialogActions>
-            <Button appearance="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button appearance="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button appearance="primary" onClick={handleTransfer} disabled={saving}>
               {saving ? 'Transferring...' : 'Transfer'}
             </Button>

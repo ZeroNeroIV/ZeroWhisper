@@ -1,12 +1,5 @@
-import {
-  Dialog,
-  DialogSurface,
-  DialogBody,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@fluentui/react-components'
+import { Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions } from '@/components/ui/Dialog'
+import { Button } from '@/components/ui/Button'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -32,7 +25,7 @@ export function ConfirmDialog({
   destructive,
 }: ConfirmDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={(_, data) => onOpenChange(data.open)}>
+    <Dialog open={open} onOpenChange={(open) => onOpenChange(open)}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>{title}</DialogTitle>
@@ -40,12 +33,12 @@ export function ConfirmDialog({
             <p className="text-sm text-foreground">{message}</p>
           </DialogContent>
           <DialogActions>
-            <Button appearance="outline" onClick={() => { onCancel?.(); onOpenChange(false) }}>
+            <Button appearance="secondary" onClick={() => { onCancel?.(); onOpenChange(false) }}>
               {cancelLabel}
             </Button>
             <Button
               appearance="primary"
-              style={destructive ? { backgroundColor: 'var(--colorStatusDangerForeground1)' } : undefined}
+              className={destructive ? 'bg-red-600' : ''}
               onClick={() => { onConfirm(); onOpenChange(false) }}
             >
               {confirmLabel}

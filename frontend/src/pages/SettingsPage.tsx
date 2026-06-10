@@ -1,28 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import {
-  TabList,
-  Tab,
-  Button,
-  Input,
-  Label,
-  Card,
-  Dialog,
-  DialogSurface,
-  DialogBody,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHeaderCell,
-  TableCell,
-  Field,
-  Select,
-} from '@fluentui/react-components'
+import { TabList, Tab } from '@/components/ui/Tabs'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Label } from '@/components/ui/Label'
+import { Card } from '@/components/ui/Card'
+import { Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions } from '@/components/ui/Dialog'
+import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '@/components/ui/Table'
+import { Field } from '@/components/ui/Field'
+import { Select } from '@/components/ui/Select'
 import { Pencil, Trash2, Save } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PromptDialog } from '@/components/ui/PromptDialog'
@@ -141,10 +128,10 @@ function ApiKeysTab() {
                   </TableCell>
                   <TableCell>
                     <Button
-                      appearance="outline"
+                      appearance="secondary"
                       size="small"
                       onClick={() => handleRevoke(k.id, k.name)}
-                      style={{ color: 'var(--colorStatusDangerForeground1)', borderColor: 'var(--colorStatusDangerForeground1)' }}
+                      className="text-red-500 border-red-500"
                     >
                       Revoke
                     </Button>
@@ -156,7 +143,7 @@ function ApiKeysTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={(_, data) => { if (!data.open) handleCloseDialog() }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog() }}>
         <DialogSurface>
           <DialogBody>
             <DialogTitle>Generate New API Key</DialogTitle>
@@ -186,7 +173,7 @@ function ApiKeysTab() {
                     <code className="flex-1 overflow-x-auto rounded border bg-muted px-3 py-2 text-sm">
                       {generatedKey}
                     </code>
-                    <Button appearance="outline" size="small" onClick={handleCopy}>
+                    <Button appearance="secondary" size="small" onClick={handleCopy}>
                       {copied ? 'Copied!' : 'Copy'}
                     </Button>
                   </div>
@@ -196,7 +183,7 @@ function ApiKeysTab() {
             <DialogActions>
               {!generatedKey ? (
                 <>
-                  <Button appearance="outline" onClick={handleCloseDialog} disabled={creating}>
+                  <Button appearance="secondary" onClick={handleCloseDialog} disabled={creating}>
                     Cancel
                   </Button>
                   <Button appearance="primary" onClick={handleCreate} disabled={creating}>
@@ -496,15 +483,19 @@ function CategoriesTab() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <Button appearance="transparent" icon={<Pencil size={15} />} onClick={() => openEdit(cat)} aria-label="Edit category" />
-                <Button appearance="transparent" icon={<Trash2 size={15} />} onClick={() => handleDelete(cat)} aria-label="Delete category" style={{ color: 'var(--colorStatusDangerForeground1)' }} />
+                <Button appearance="ghost" onClick={() => openEdit(cat)} aria-label="Edit category">
+                  <Pencil size={15} />
+                </Button>
+                <Button appearance="ghost" onClick={() => handleDelete(cat)} aria-label="Delete category" className="text-red-500">
+                  <Trash2 size={15} />
+                </Button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={(_, data) => { if (!data.open) setDialogOpen(false) }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) setDialogOpen(false) }}>
         <DialogSurface>
           <DialogBody>
             <DialogTitle>{editingId ? 'Edit Category' : 'Add Category'}</DialogTitle>
@@ -535,7 +526,7 @@ function CategoriesTab() {
                   </div>
                 </Field>
 
-                <Field label="Parent category (optional)" hint="Nest this under a top-level category, e.g. Family Savings under Savings">
+                <Field label="Parent category (optional)">
                   <Select value={formParent} onChange={(e) => setFormParent(e.target.value)}>
                     <option value="">None (top-level)</option>
                     {categories
@@ -812,7 +803,7 @@ function CategoriesTab() {
               </div>
             </DialogContent>
             <DialogActions>
-              <Button appearance="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+              <Button appearance="secondary" onClick={() => setDialogOpen(false)} disabled={saving}>
                 Cancel
               </Button>
               <Button appearance="primary" onClick={handleSave} disabled={saving}>
@@ -1204,7 +1195,7 @@ function BanksTab() {
                 <div className="flex items-center gap-2">
                   <Button
                     size="small"
-                    appearance="outline"
+                    appearance="secondary"
                     disabled={syncingId === conn.id}
                     onClick={() => handleSync(conn)}
                   >
@@ -1221,8 +1212,8 @@ function BanksTab() {
                   </label>
                   <Button
                     size="small"
-                    appearance="subtle"
-                    style={{ color: 'var(--colorStatusDangerForeground1)' }}
+                    appearance="ghost"
+                    className="text-red-500"
                     onClick={() => handleDelete(conn)}
                   >
                     Remove
@@ -1234,7 +1225,7 @@ function BanksTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={(_, data) => { if (!data.open) setDialogOpen(false) }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) setDialogOpen(false) }}>
         <DialogSurface>
           <DialogBody>
             <DialogTitle>Add Bank Connection</DialogTitle>
@@ -1326,7 +1317,7 @@ function BanksTab() {
               </div>
             </DialogContent>
             <DialogActions>
-              <Button appearance="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+              <Button appearance="secondary" onClick={() => setDialogOpen(false)} disabled={saving}>
                 Cancel
               </Button>
               <Button appearance="primary" onClick={handleCreate} disabled={saving}>
@@ -1418,7 +1409,7 @@ function SecurityTab() {
         <p className="mb-4 text-sm text-muted-foreground">
           Recovery phrase display — coming soon.
         </p>
-        <Button appearance="outline" disabled>
+        <Button appearance="secondary" disabled>
           View Recovery Phrase
         </Button>
       </Card>
@@ -1705,7 +1696,7 @@ function AboutTab() {
             <li>FastAPI</li>
             <li>SQLCipher</li>
             <li>React</li>
-            <li>Fluent UI v9</li>
+            <li>Custom design system</li>
             <li>OpenAI / Google Gemini</li>
           </ul>
         </div>
@@ -1731,17 +1722,16 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold">Settings</h1>
       <div className="overflow-x-auto -mx-1 px-1">
         <TabList
-          selectedValue={activeTab}
-          onTabSelect={(_, d) => setActiveTab(d.value as string)}
-          className="mb-4 flex-nowrap"
+          selectedTab={activeTab}
+          onTabSelect={setActiveTab}
         >
-          <Tab value="api-keys">API Keys</Tab>
-          <Tab value="categories">Categories</Tab>
-          <Tab value="exchange-rates">Rates</Tab>
-          <Tab value="banks">Banks</Tab>
-          <Tab value="security">Security</Tab>
-          <Tab value="ai">AI</Tab>
-          <Tab value="about">About</Tab>
+          <Tab id="api-keys">API Keys</Tab>
+          <Tab id="categories">Categories</Tab>
+          <Tab id="exchange-rates">Rates</Tab>
+          <Tab id="banks">Banks</Tab>
+          <Tab id="security">Security</Tab>
+          <Tab id="ai">AI</Tab>
+          <Tab id="about">About</Tab>
         </TabList>
       </div>
 

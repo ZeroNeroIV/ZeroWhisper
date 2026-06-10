@@ -1,15 +1,12 @@
-"""Transaction API routes — thin HTTP glue for transaction CRUD."""
 from __future__ import annotations
 
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
-from sqlmodel import Session
+from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.transaction_service import TransactionService
-from app.core.domain.user import User
 from app.schemas.transaction import (
     PaginatedTransactions,
     TransactionCreate,
@@ -21,15 +18,11 @@ from app.schemas.transaction import (
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
 
-def _get_service(request: Request, session: Session = Depends(get_session)) -> TransactionService:
-    return request.app.state.container.transaction_service(session)
-
-
 @router.get("")
 def list_transactions(
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: TransactionService = Depends(_get_service),
+    container: ContainerDep,
+    session: SessionDep,
+    user: UserDep,
     page: int = 1,
     page_size: int = 20,
     category: str | None = None,
@@ -43,23 +36,26 @@ def list_transactions(
     df = date.fromisoformat(date_from) if date_from else None
     dt = date.fromisoformat(date_to) if date_to else None
     wid = UUID(wallet_id) if wallet_id else None
+    import math
+    service: TransactionService = container.transaction_service(session)
     items, total = service.list(
         user.id, page, page_size, category, currency, df, dt, source, wid, type,
     )
     return PaginatedTransactions(
         items=[tx_to_read(tx) for tx in items],
         total=total, page=page, page_size=page_size,
-        pages=max(1, -(-total // page_size)),
+        pages=max(1, math.ceil(total / page_size)),
     )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=TransactionRead)
 def create_transaction(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     body: TransactionCreate,
-    user: User = Depends(get_current_user),
-    service: TransactionService = Depends(_get_service),
+    user: UserDep,
 ):
+    service: TransactionService = container.transaction_service(session)
     tx = service.create(
         user_id=user.id,
         amount_original=body.amount_original,
@@ -74,22 +70,24 @@ def create_transaction(
 
 @router.get("/{tx_id}", response_model=TransactionRead)
 def get_transaction(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     tx_id: UUID,
-    user: User = Depends(get_current_user),
-    service: TransactionService = Depends(_get_service),
+    user: UserDep,
 ):
+    service: TransactionService = container.transaction_service(session)
     return tx_to_read(service.get(tx_id, user.id))
 
 
 @router.put("/{tx_id}", response_model=TransactionRead)
 def update_transaction(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     tx_id: UUID,
     body: TransactionUpdate,
-    user: User = Depends(get_current_user),
-    service: TransactionService = Depends(_get_service),
+    user: UserDep,
 ):
+    service: TransactionService = container.transaction_service(session)
     tx = service.update(
         tx_id=tx_id, user_id=user.id,
         amount_original=body.amount_original,
@@ -104,9 +102,10 @@ def update_transaction(
 
 @router.delete("/{tx_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transaction(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     tx_id: UUID,
-    user: User = Depends(get_current_user),
-    service: TransactionService = Depends(_get_service),
+    user: UserDep,
 ):
+    service: TransactionService = container.transaction_service(session)
     service.delete(tx_id, user.id)

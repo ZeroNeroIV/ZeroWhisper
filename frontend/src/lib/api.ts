@@ -20,12 +20,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   async (error) => {
-    // DB not ready (vault locked / backend restarted) — send to setup
     if (
       error.response?.status === 503 &&
       error.response?.data?.detail?.includes('setup') &&
-      !error.config?.url?.startsWith('/setup') &&
-      !error.config?.url?.startsWith('/auth')
+      !error.config?.url?.startsWith('/setup')
     ) {
       window.location.href = '/setup'
       return Promise.reject(error)

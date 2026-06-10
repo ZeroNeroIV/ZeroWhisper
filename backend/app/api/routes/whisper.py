@@ -1,14 +1,10 @@
-"""Whisper API routes — natural language and voice transaction entry."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
-from sqlmodel import Session
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.whisper_service import WhisperService
-from app.core.domain.user import User
-from app.core.exceptions import NotFoundError
 
 router = APIRouter(prefix="/api/whisper", tags=["whisper"])
 
@@ -19,8 +15,6 @@ class ParseRequest(BaseModel):
 
 class ConfirmRequest(BaseModel):
     proposal_id: str
-    # Optional field overrides applied before execution (amount_original,
-    # currency_original, category, description, transaction_date, wallet_id).
     overrides: dict | None = None
 
 
@@ -28,34 +22,26 @@ class RejectRequest(BaseModel):
     proposal_id: str
 
 
-def _get_service(request: Request, session: Session = Depends(get_session)) -> WhisperService:
-    return request.app.state.container.whisper_service(session)
-
-
 @router.post("/parse")
 async def parse(
+    container: ContainerDep,
+    session: SessionDep,
     body: ParseRequest,
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: WhisperService = Depends(_get_service),
+    user: UserDep,
 ):
-    result = await service.parse_message(user.id, body.message)
-    return result
+    service: WhisperService = container.whisper_service(session)
+    return await service.parse_message(user.id, body.message)
 
 
 @router.post("/confirm", status_code=status.HTTP_201_CREATED)
 def confirm(
+    container: ContainerDep,
+    session: SessionDep,
     body: ConfirmRequest,
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: WhisperService = Depends(_get_service),
+    user: UserDep,
 ):
-    try:
-        tx = service.confirm(body.proposal_id, user.id, overrides=body.overrides)
-    except NotFoundError as e:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail=e.detail)
-
+    service: WhisperService = container.whisper_service(session)
+    tx = service.confirm(body.proposal_id, user.id, overrides=body.overrides)
     return {
         "id": str(tx.id),
         "amount_original": str(tx.amount_original),
@@ -73,22 +59,23 @@ def confirm(
 
 @router.post("/reject")
 def reject(
+    container: ContainerDep,
+    session: SessionDep,
     body: RejectRequest,
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: WhisperService = Depends(_get_service),
+    user: UserDep,
 ):
+    service: WhisperService = container.whisper_service(session)
     if not service.reject(body.proposal_id, user.id):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Proposal not found")
+        raise status.HTTP_404_NOT_FOUND
     return {"status": "rejected"}
 
 
 @router.get("/ai-status")
 def ai_status(
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: WhisperService = Depends(_get_service),
+    container: ContainerDep,
+    session: SessionDep,
+    user: UserDep,
 ):
+    service: WhisperService = container.whisper_service(session)
     provider = service.get_ai_provider()
     return {"provider": type(provider).__name__, "ready": True}

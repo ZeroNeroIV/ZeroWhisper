@@ -1,17 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import {
-  Button,
-  Dialog,
-  DialogSurface,
-  DialogBody,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Field,
-  Input,
-  Select,
-} from '@fluentui/react-components'
+import { Button } from '@/components/ui/Button'
+import { Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions } from '@/components/ui/Dialog'
+import { Field } from '@/components/ui/Field'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import type { TransactionFormData } from '@/types/transaction'
 import type { Category } from '@/types/category'
 import type { Wallet } from '@/types/wallet'
@@ -164,7 +157,7 @@ function FormContent({
         </form>
       </DialogContent>
       <DialogActions>
-        <Button appearance="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <Button appearance="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
           Cancel
         </Button>
         <Button appearance="primary" type="submit" form="tx-form" disabled={saving}>
@@ -195,7 +188,7 @@ export function TransactionForm({
   }, [open])
 
   return (
-    <Dialog open={open} onOpenChange={(_, data) => { if (!data.open) onOpenChange(false) }}>
+    <Dialog open={open} onOpenChange={(open) => { if (!open) onOpenChange(false) }}>
       <DialogSurface key={resetKey}>
         <FormContent
           initialData={initialData}

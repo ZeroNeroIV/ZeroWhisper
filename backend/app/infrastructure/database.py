@@ -143,16 +143,29 @@ class DatabaseManager:
             add_missing_columns("category", {
                 "icon": "VARCHAR",
                 "parent_id": "VARCHAR REFERENCES category(id)",
+                "color": "VARCHAR",
+                "is_default": "INTEGER NOT NULL DEFAULT 0",
+                "type": "VARCHAR NOT NULL DEFAULT 'expense'",
             })
             add_missing_columns("wallet", {
                 "type": "VARCHAR NOT NULL DEFAULT 'cash'",
                 "initial_balance": "NUMERIC(18,6) NOT NULL DEFAULT 0",
                 "icon": "VARCHAR",
+                "currency": "VARCHAR(3) NOT NULL DEFAULT 'JOD'",
+                "is_active": "INTEGER NOT NULL DEFAULT 1",
             })
             tx_added = add_missing_columns("transaction", {
                 "wallet_id": "VARCHAR",
                 "type": "VARCHAR NOT NULL DEFAULT 'expense'",
                 "transfer_id": "VARCHAR",
+                "category": "VARCHAR NOT NULL DEFAULT ''",
+                "source": "VARCHAR NOT NULL DEFAULT 'manual'",
+                "currency_original": "VARCHAR NOT NULL DEFAULT 'JOD'",
+                "is_deleted": "INTEGER NOT NULL DEFAULT 0",
+            })
+            # Also add missing exchange rate source column
+            add_missing_columns("exchangerate", {
+                "source": "VARCHAR NOT NULL DEFAULT 'manual'",
             })
 
             # Backfill transaction.type from the owning user's category types so

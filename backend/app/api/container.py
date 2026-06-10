@@ -10,8 +10,9 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.database import _db_manager
 from app.infrastructure.database import DatabaseManager
+
+_db_manager = DatabaseManager("data")
 from app.infrastructure.vault.manager import SqlCipherVaultManager
 from app.infrastructure.repositories.transaction_repo import SQLModelTransactionRepository
 from app.infrastructure.repositories.category_repo import SQLModelCategoryRepository
