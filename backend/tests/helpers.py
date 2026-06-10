@@ -7,13 +7,19 @@ from typing import Any
 from uuid import UUID
 
 from app.core.domain.category import Category, CategoryType
-from app.core.domain.transaction import ExchangeRate, Transaction as DomainTransaction
+from app.core.domain.transaction import (
+    ExchangeRate,
+    Transaction as DomainTransaction,
+    TRANSFER_TYPES,
+)
 from app.core.domain.user import User
+from app.core.domain.wallet import Wallet
 from app.core.exceptions import NotFoundError, ConflictError
 from app.core.ports.category_repo import CategoryRepository
 from app.core.ports.exchange_rate_repo import ExchangeRateRepository
 from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.user_repo import UserRepository
+from app.core.ports.wallet_repo import WalletRepository
 
 
 class InMemoryCategoryRepository(CategoryRepository):
@@ -51,7 +57,22 @@ class InMemoryCategoryRepository(CategoryRepository):
         cat = self._store.get(cat_id)
         if not cat or cat.user_id != user_id:
             raise NotFoundError("Category", str(cat_id))
+        if self.has_children(cat_id, user_id):
+            raise ConflictError(f"Category '{cat.name}' has sub-categories")
         del self._store[cat_id]
+
+    def has_children(self, cat_id: UUID, user_id: UUID) -> bool:
+        return any(
+            c.parent_id == cat_id for c in self._store.values() if c.user_id == user_id
+        )
+
+    def get_or_create_transfer_category(self, user_id: UUID) -> Category:
+        existing = self.find_by_name(user_id, "Transfer")
+        if existing:
+            return existing
+        cat = Category(user_id=user_id, name="Transfer", type=CategoryType.TRANSFER, is_default=True)
+        self._store[cat.id] = cat
+        return cat
 
     def get_type_map(self, user_id: UUID) -> dict[str, str]:
         return {c.name: c.type.value for c in self.find_by_user(user_id)}
@@ -93,6 +114,7 @@ class InMemoryTransactionRepository(TransactionRepository):
         category: str | None = None, currency: str | None = None,
         date_from: date | None = None, date_to: date | None = None,
         source: str | None = None, wallet_id: UUID | None = None,
+        type: str | None = None,
     ) -> tuple[list[DomainTransaction], int]:
         items = [
             t for t in self._store.values()
@@ -103,11 +125,19 @@ class InMemoryTransactionRepository(TransactionRepository):
             and (date_to is None or t.transaction_date <= date_to)
             and (source is None or t.source == source)
             and (wallet_id is None or t.wallet_id == wallet_id)
+            and (type is None
+                 or (t.type.value in TRANSFER_TYPES if type == "transfer" else t.type.value == type))
         ]
         items.sort(key=lambda t: t.transaction_date, reverse=True)
         total = len(items)
         start = (page - 1) * page_size
         return items[start:start + page_size], total
+
+    def find_by_transfer_id(self, transfer_id: UUID, user_id: UUID) -> list[DomainTransaction]:
+        return [
+            t for t in self._store.values()
+            if t.transfer_id == transfer_id and t.user_id == user_id and not t.is_deleted
+        ]
 
     def soft_delete(self, tx_id: UUID, user_id: UUID) -> None:
         tx = self._store.get(tx_id)
@@ -124,9 +154,16 @@ class InMemoryTransactionRepository(TransactionRepository):
 
     def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
         return sum(
-            (t.amount_base for t in self._store.values()
+            (t.signed_amount_base for t in self._store.values()
              if t.wallet_id == wallet_id and t.user_id == user_id and not t.is_deleted),
             Decimal("0"),
+        )
+
+    def count_by_category_month(self, user_id: UUID, category: str, year: int, month: int) -> int:
+        return sum(
+            1 for t in self._store.values()
+            if t.user_id == user_id and not t.is_deleted and t.category == category
+            and t.transaction_date.year == year and t.transaction_date.month == month
         )
 
     def sum_by_categories(self, user_id: UUID, categories: list[str]) -> Decimal:
@@ -142,7 +179,7 @@ class InMemoryTransactionRepository(TransactionRepository):
     ) -> dict[str, Decimal]:
         result: dict[str, Decimal] = {}
         for t in self._store.values():
-            if t.user_id != user_id or t.is_deleted:
+            if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             if t.transaction_date.year != year or t.transaction_date.month != month:
                 continue
@@ -158,7 +195,7 @@ class InMemoryTransactionRepository(TransactionRepository):
         exclude = set(income_categories) | set(savings_categories)
         daily: dict[date, dict[str, Any]] = {}
         for t in self._store.values():
-            if t.user_id != user_id or t.is_deleted:
+            if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             if t.transaction_date < from_date or t.transaction_date > to_date:
                 continue
@@ -184,7 +221,7 @@ class InMemoryTransactionRepository(TransactionRepository):
     ) -> list[dict]:
         monthly: dict[str, float] = {}
         for t in self._store.values():
-            if t.user_id != user_id or t.is_deleted:
+            if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             month = t.transaction_date.strftime("%Y-%m")
             delta = float(t.amount_base) if t.category in income_categories else -float(t.amount_base)
@@ -203,7 +240,7 @@ class InMemoryTransactionRepository(TransactionRepository):
         total_income = Decimal("0")
         total_expenses = Decimal("0")
         for t in self._store.values():
-            if t.user_id != user_id or t.is_deleted:
+            if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             if t.transaction_date.year != year or t.transaction_date.month != month:
                 continue
@@ -222,6 +259,52 @@ class InMemoryTransactionRepository(TransactionRepository):
             reverse=True,
         )
         return items[:limit]
+
+
+class InMemoryWalletRepository(WalletRepository):
+    def __init__(self) -> None:
+        self._store: dict[UUID, Wallet] = {}
+
+    def list_by_user(self, user_id: UUID, include_inactive: bool = False) -> list[Wallet]:
+        return [
+            w for w in self._store.values()
+            if w.user_id == user_id and (include_inactive or w.is_active)
+        ]
+
+    def get(self, wallet_id: UUID, user_id: UUID) -> Wallet | None:
+        w = self._store.get(wallet_id)
+        if w and w.user_id == user_id:
+            return w
+        return None
+
+    def find_by_name(self, user_id: UUID, name: str) -> Wallet | None:
+        needle = name.strip().lower()
+        for w in self._store.values():
+            if w.user_id == user_id and w.name.lower() == needle:
+                return w
+        return None
+
+    def save(self, wallet: Wallet) -> Wallet:
+        self._store[wallet.id] = wallet
+        return wallet
+
+    def update(self, wallet: Wallet) -> Wallet:
+        if wallet.id not in self._store:
+            raise NotFoundError("Wallet", str(wallet.id))
+        self._store[wallet.id] = wallet
+        return wallet
+
+    def update_balance(self, wallet_id: UUID, balance: Decimal) -> None:
+        w = self._store.get(wallet_id)
+        if w:
+            w.balance = balance
+
+    def delete(self, wallet_id: UUID, user_id: UUID) -> bool:
+        w = self._store.get(wallet_id)
+        if not w or w.user_id != user_id:
+            return False
+        del self._store[wallet_id]
+        return True
 
 
 class InMemoryUserRepository(UserRepository):

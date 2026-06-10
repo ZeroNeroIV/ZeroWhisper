@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from uuid import UUID
 
 from app.application.transaction_service import TransactionService
@@ -19,18 +19,23 @@ _FOOD_KEYWORDS = frozenset({"grocery", "supermarket", "food", "restaurant", "cof
 _TRANSPORT_KEYWORDS = frozenset({"gasoline", "fuel", "petrol", "parking", "taxi", "uber"})
 
 
-def _infer_category(description: str) -> str:
+def _infer_category(description: str, valid_categories: set[str]) -> str:
+    """Best-effort keyword match, constrained to categories the user actually has."""
     desc_lower = description.lower()
+    candidates: list[str] = []
     if any(w in desc_lower for w in _INCOME_KEYWORDS):
-        return "Income"
-    if any(w in desc_lower for w in _HOUSING_KEYWORDS):
-        return "Housing"
-    if any(w in desc_lower for w in _UTILITIES_KEYWORDS):
-        return "Utilities"
-    if any(w in desc_lower for w in _FOOD_KEYWORDS):
-        return "Food"
-    if any(w in desc_lower for w in _TRANSPORT_KEYWORDS):
-        return "Transport"
+        candidates = ["Income", "Salary"]
+    elif any(w in desc_lower for w in _HOUSING_KEYWORDS):
+        candidates = ["Housing"]
+    elif any(w in desc_lower for w in _UTILITIES_KEYWORDS):
+        candidates = ["Utilities"]
+    elif any(w in desc_lower for w in _FOOD_KEYWORDS):
+        candidates = ["Food & Drinks", "Food"]
+    elif any(w in desc_lower for w in _TRANSPORT_KEYWORDS):
+        candidates = ["Transportation", "Transport"]
+    for name in candidates:
+        if name in valid_categories:
+            return name
     return "Other"
 
 
@@ -111,10 +116,13 @@ class BankSyncService:
 
         imported = 0
         skipped = 0
+        valid_categories = {
+            c.name for c in self._cat_repo.seed_defaults(connection.user_id)
+        }
 
         for btx in bank_txs:
             try:
-                category = _infer_category(btx.description)
+                category = _infer_category(btx.description, valid_categories)
 
                 existing, _ = self._tx_service.list(
                     user_id=connection.user_id,

@@ -19,6 +19,9 @@ class ParseRequest(BaseModel):
 
 class ConfirmRequest(BaseModel):
     proposal_id: str
+    # Optional field overrides applied before execution (amount_original,
+    # currency_original, category, description, transaction_date, wallet_id).
+    overrides: dict | None = None
 
 
 class RejectRequest(BaseModel):
@@ -48,7 +51,7 @@ def confirm(
     service: WhisperService = Depends(_get_service),
 ):
     try:
-        tx = service.confirm(body.proposal_id, user.id)
+        tx = service.confirm(body.proposal_id, user.id, overrides=body.overrides)
     except NotFoundError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=e.detail)
@@ -59,9 +62,12 @@ def confirm(
         "currency_original": tx.currency_original,
         "amount_base": str(tx.amount_base),
         "category": tx.category,
+        "type": tx.type.value,
         "description": tx.description,
         "transaction_date": tx.transaction_date.isoformat(),
         "source": tx.source,
+        "wallet_id": str(tx.wallet_id) if tx.wallet_id else None,
+        "transfer_id": str(tx.transfer_id) if tx.transfer_id else None,
     }
 
 

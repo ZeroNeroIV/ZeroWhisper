@@ -4,9 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, status
 from sqlmodel import Session
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_session
 from app.application.auth_service import AuthService
-from app.core.domain.user import User
 from app.core.ratelimit import auth_rate_limit
 from app.schemas.auth import UserRegister, UserLogin, TokenResponse, RefreshRequest, UserRead
 

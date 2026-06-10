@@ -15,6 +15,19 @@ from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryRead
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 
 
+def _to_read(cat) -> CategoryRead:
+    return CategoryRead(
+        id=cat.id,
+        user_id=cat.user_id,
+        name=cat.name,
+        type=cat.type.value,
+        color=cat.color,
+        icon=cat.icon,
+        is_default=cat.is_default,
+        parent_id=cat.parent_id,
+    )
+
+
 def _get_service(request: Request, session: Session = Depends(get_session)) -> CategoryService:
     return request.app.state.container.category_service(session)
 
@@ -41,16 +54,9 @@ def create_category(
         type=CategoryType(body.type),
         color=body.color,
         icon=body.icon,
+        parent_id=body.parent_id,
     )
-    return CategoryRead(
-        id=cat.id,
-        user_id=cat.user_id,
-        name=cat.name,
-        type=cat.type.value,
-        color=cat.color,
-        icon=cat.icon,
-        is_default=cat.is_default,
-    )
+    return _to_read(cat)
 
 
 @router.put("/{cat_id}", response_model=CategoryRead)
@@ -68,16 +74,10 @@ def update_category(
         type=CategoryType(body.type) if body.type else None,
         color=body.color,
         icon=body.icon,
+        parent_id=body.parent_id,
+        clear_parent=body.clear_parent,
     )
-    return CategoryRead(
-        id=cat.id,
-        user_id=cat.user_id,
-        name=cat.name,
-        type=cat.type.value,
-        color=cat.color,
-        icon=cat.icon,
-        is_default=cat.is_default,
-    )
+    return _to_read(cat)
 
 
 @router.delete("/{cat_id}", status_code=status.HTTP_204_NO_CONTENT)

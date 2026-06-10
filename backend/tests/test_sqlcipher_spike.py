@@ -13,7 +13,6 @@ Run as a standalone script from backend/:
 
 import os
 import tempfile
-import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DatabaseError, OperationalError
 

@@ -7,14 +7,12 @@ and provides them to route handlers. No business logic — pure plumbing.
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
 from app.api.container import Container
-from app.application.auth_service import AuthService
 from app.application.transaction_service import TransactionService
 from app.application.whisper_service import WhisperService
 from app.application.analytics_service import AnalyticsService

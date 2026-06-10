@@ -14,3 +14,4 @@ class Category(SQLModel, table=True):
     color: str | None = Field(default=None)
     icon: str | None = Field(default=None)
     is_default: bool = Field(default=False)
+    parent_id: UUID | None = Field(default=None, foreign_key="category.id")

@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.analytics_service import AnalyticsService, _month_end
-from app.core.domain.transaction import Transaction as DomainTransaction
+from app.core.domain.transaction import Transaction as DomainTransaction, TransactionType
 from app.core.domain.category import Category, CategoryType
 from tests.helpers import InMemoryTransactionRepository, InMemoryCategoryRepository
 
@@ -26,7 +26,11 @@ def analytics(cat_repo: InMemoryCategoryRepository, tx_repo: InMemoryTransaction
 
 
 @pytest.fixture
-def seeded_user(cat_repo: InMemoryCategoryRepository, tx_repo: InMemoryTransactionRepository) -> tuple:
+def seeded_user(
+    cat_repo: InMemoryCategoryRepository,
+    tx_repo: InMemoryTransactionRepository,
+    analytics: AnalyticsService,
+) -> tuple:
     uid = uuid4()
     cat_repo.seed_defaults(uid)
     cat_repo.save(Category(uid, "Fuel", CategoryType.EXPENSE))
@@ -34,7 +38,7 @@ def seeded_user(cat_repo: InMemoryCategoryRepository, tx_repo: InMemoryTransacti
     tx_repo.save(DomainTransaction(
         user_id=uid, amount_original=Decimal("3000"), currency_original="JOD",
         category="Salary", transaction_date=date(2025, 1, 5),
-        amount_base=Decimal("3000"),
+        amount_base=Decimal("3000"), type=TransactionType.INCOME,
     ))
     tx_repo.save(DomainTransaction(
         user_id=uid, amount_original=Decimal("200"), currency_original="JOD",
@@ -61,7 +65,7 @@ class TestGetCashFlow:
     def test_returns_daily_aggregates(self, seeded_user) -> None:
         uid, analytics = seeded_user
         flow = analytics.get_cash_flow(uid, date(2025, 1, 1), date(2025, 1, 31))
-        assert len(flow) == 2  # 2 days with transactions
+        assert len(flow) == 3  # 3 days with transactions
         income_day = next(d for d in flow if d["date"] == "2025-01-05")
         assert income_day["income"] == 3000.0
         expense_day = next(d for d in flow if d["date"] == "2025-01-10")

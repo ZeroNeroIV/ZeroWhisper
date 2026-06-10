@@ -21,7 +21,7 @@ from uuid import uuid4
 from mnemonic import Mnemonic
 
 from app.core.config import settings
-from app.core.exceptions import DomainError, ValidationError
+from app.core.exceptions import ValidationError
 from app.core.ports.vault_manager import VaultManager
 from app.infrastructure.database import DatabaseManager, validate_hex_key
 

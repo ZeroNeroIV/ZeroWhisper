@@ -19,8 +19,6 @@ from app.database import initialize_engine, _db_manager
 
 # Attempt to import SQLCipher; skip gracefully if unavailable.
 try:
-    from app.main import app
-    from app.database import get_session
     _SQLCIPHER_AVAILABLE = True
 except Exception as _import_exc:
     _SQLCIPHER_AVAILABLE = False

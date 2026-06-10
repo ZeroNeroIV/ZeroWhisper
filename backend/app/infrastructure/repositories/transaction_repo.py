@@ -11,12 +11,16 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import case
 from sqlmodel import Session, select, func
 
-from app.core.domain.transaction import Transaction as DomainTransaction
+from app.core.domain.transaction import Transaction as DomainTransaction, TransactionType, TRANSFER_TYPES
 from app.core.exceptions import NotFoundError
 from app.core.ports.transaction_repo import TransactionRepository
 from app.models.transaction import Transaction as ORMTransaction
+
+# Income and incoming transfers add to a wallet; everything else subtracts.
+_POSITIVE_TYPES = (TransactionType.INCOME.value, TransactionType.TRANSFER_IN.value)
 
 
 class SQLModelTransactionRepository(TransactionRepository):
@@ -40,8 +44,10 @@ class SQLModelTransactionRepository(TransactionRepository):
             description=orm.description,
             transaction_date=orm.transaction_date,
             source=orm.source,
+            type=TransactionType(orm.type),
             is_deleted=orm.is_deleted,
             wallet_id=orm.wallet_id,
+            transfer_id=orm.transfer_id,
             created_at=orm.created_at,
         )
 
@@ -58,8 +64,10 @@ class SQLModelTransactionRepository(TransactionRepository):
             description=domain.description,
             transaction_date=domain.transaction_date,
             source=domain.source,
+            type=domain.type.value,
             is_deleted=domain.is_deleted,
             wallet_id=domain.wallet_id,
+            transfer_id=domain.transfer_id,
             created_at=domain.created_at,
         )
 
@@ -100,6 +108,7 @@ class SQLModelTransactionRepository(TransactionRepository):
         date_to: date | None = None,
         source: str | None = None,
         wallet_id: UUID | None = None,
+        type: str | None = None,
     ) -> tuple[list[DomainTransaction], int]:
         if page < 1:
             page = 1
@@ -122,6 +131,11 @@ class SQLModelTransactionRepository(TransactionRepository):
             query = query.where(ORMTransaction.source == source)
         if wallet_id:
             query = query.where(ORMTransaction.wallet_id == wallet_id)
+        if type:
+            if type == "transfer":
+                query = query.where(ORMTransaction.type.in_(TRANSFER_TYPES))
+            else:
+                query = query.where(ORMTransaction.type == type)
 
         count_query = select(func.count()).select_from(query.subquery())
         total = self._session.exec(count_query).one()
@@ -165,20 +179,50 @@ class SQLModelTransactionRepository(TransactionRepository):
         orm.description = tx.description
         orm.transaction_date = tx.transaction_date
         orm.wallet_id = tx.wallet_id
+        orm.type = tx.type.value
         self._session.add(orm)
         self._session.commit()
         self._session.refresh(orm)
         return self._to_domain(orm)
 
+    def find_by_transfer_id(self, transfer_id: UUID, user_id: UUID) -> list[DomainTransaction]:
+        items = self._session.exec(
+            select(ORMTransaction).where(
+                ORMTransaction.transfer_id == transfer_id,
+                ORMTransaction.user_id == user_id,
+                ORMTransaction.is_deleted == False,
+            )
+        ).all()
+        return [self._to_domain(t) for t in items]
+
     def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
+        signed = case(
+            (ORMTransaction.type.in_(_POSITIVE_TYPES), ORMTransaction.amount_base),
+            else_=-ORMTransaction.amount_base,
+        )
         result = self._session.exec(
-            select(func.sum(ORMTransaction.amount_base)).where(
+            select(func.sum(signed)).where(
                 ORMTransaction.wallet_id == wallet_id,
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
             )
         ).one()
-        return result or Decimal("0")
+        return Decimal(str(result)) if result is not None else Decimal("0")
+
+    def count_by_category_month(self, user_id: UUID, category: str, year: int, month: int) -> int:
+        from datetime import date as _date
+        month_start = _date(year, month, 1)
+        month_end = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+        result = self._session.exec(
+            select(func.count()).select_from(ORMTransaction).where(
+                ORMTransaction.user_id == user_id,
+                ORMTransaction.category == category,
+                ORMTransaction.is_deleted == False,
+                ORMTransaction.transaction_date >= month_start,
+                ORMTransaction.transaction_date < month_end,
+            )
+        ).one()
+        return int(result)
 
     def sum_by_categories(self, user_id: UUID, categories: list[str]) -> Decimal:
         if not categories:
@@ -209,6 +253,7 @@ class SQLModelTransactionRepository(TransactionRepository):
         ).where(
             ORMTransaction.user_id == user_id,
             ORMTransaction.is_deleted == False,
+            ORMTransaction.type.notin_(TRANSFER_TYPES),
             ORMTransaction.transaction_date >= month_start,
             ORMTransaction.transaction_date < month_end,
         )
@@ -239,6 +284,7 @@ class SQLModelTransactionRepository(TransactionRepository):
             .where(
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
+                ORMTransaction.type.notin_(TRANSFER_TYPES),
                 ORMTransaction.transaction_date >= from_date,
                 ORMTransaction.transaction_date <= to_date,
                 ORMTransaction.category.notin_(list(exclude)) if exclude else True,
@@ -280,6 +326,7 @@ class SQLModelTransactionRepository(TransactionRepository):
             .where(
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
+                ORMTransaction.type.notin_(TRANSFER_TYPES),
             )
             .group_by(
                 func.strftime("%Y-%m", ORMTransaction.transaction_date),
@@ -321,6 +368,7 @@ class SQLModelTransactionRepository(TransactionRepository):
             .where(
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
+                ORMTransaction.type.notin_(TRANSFER_TYPES),
                 ORMTransaction.transaction_date >= month_start,
                 ORMTransaction.transaction_date < month_end,
                 ORMTransaction.category.notin_(list(exclude)) if exclude else True,

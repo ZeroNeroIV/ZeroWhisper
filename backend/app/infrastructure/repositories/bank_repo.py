@@ -3,7 +3,6 @@ SQLModel-backed BankConnectionRepository implementation.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID
 
 from sqlmodel import Session, select

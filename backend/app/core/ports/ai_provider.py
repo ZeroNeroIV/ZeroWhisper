@@ -14,22 +14,38 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from app.core.domain.transaction import Transaction
+# Intents the Whisper agent understands. "record_*" and "transfer" produce
+# confirmable proposals; "query_*" are answered immediately from local data;
+# "unknown" yields a clarification reply.
+AGENT_INTENTS = (
+    "record_expense",
+    "record_income",
+    "transfer",
+    "query_balance",
+    "query_spending",
+    "unknown",
+)
 
 
 class AIProvider(ABC):
-    """Abstract interface for AI-powered transaction extraction and persona generation."""
+    """Abstract interface for AI-powered action extraction and persona generation."""
 
     @abstractmethod
-    async def extract_transaction(
+    async def extract_action(
         self,
         text: str,
-        categories: list[str],
+        categories: list[dict],
+        wallets: list[dict],
     ) -> dict:
-        """Extract transaction details from natural language text.
+        """Extract a financial action from natural language text.
 
-        Returns dict with keys: amount_original, currency_original, description,
-        category, confidence, transaction_date (optional).
+        `categories` is a list of {name, type} dicts; `wallets` is a list of
+        {name, type, currency} dicts — both are offered to the model so it can
+        ground its answer in the user's actual setup.
+
+        Returns a dict with keys: intent (one of AGENT_INTENTS), amount,
+        currency, description, category, wallet, from_wallet, to_wallet,
+        transaction_date, confidence, reply. Unused fields are None.
         Raises AIServiceError on failure.
         """
         ...
@@ -72,7 +88,7 @@ class AIProviderFactory(ABC):
 
     @abstractmethod
     def create_provider(self) -> AIProvider:
-        """Create an AIProvider for transaction extraction and personas."""
+        """Create an AIProvider for action extraction and personas."""
         ...
 
     @abstractmethod

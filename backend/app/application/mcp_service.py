@@ -10,13 +10,34 @@ from uuid import UUID
 
 from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.category_repo import CategoryRepository
+from app.application.wallet_service import WalletService
 
 
 class MCPService:
 
-    def __init__(self, tx_repo: TransactionRepository, cat_repo: CategoryRepository) -> None:
+    def __init__(
+        self,
+        tx_repo: TransactionRepository,
+        cat_repo: CategoryRepository,
+        wallet_service: WalletService | None = None,
+    ) -> None:
         self._tx_repo = tx_repo
         self._cat_repo = cat_repo
+        self._wallet_service = wallet_service
+
+    def get_wallets(self, user_id: UUID) -> list[dict]:
+        if self._wallet_service is None:
+            return []
+        return [
+            {
+                "name": w.name,
+                "type": w.type.value,
+                "currency": w.currency,
+                "balance_jod": str(w.balance),
+                "is_active": w.is_active,
+            }
+            for w in self._wallet_service.list_wallets(user_id)
+        ]
 
     def get_balance(self, user_id: UUID) -> dict:
         type_map = self._cat_repo.get_type_map(user_id)
@@ -37,6 +58,7 @@ class MCPService:
             {
                 "date": tx.transaction_date.isoformat(),
                 "category": tx.category,
+                "type": tx.type.value,
                 "amount_jod": str(tx.amount_base),
                 "currency_original": tx.currency_original,
                 "source": tx.source,
