@@ -58,35 +58,38 @@ Browser → nginx(:80) → static files (frontend build)
 ```
 In dev mode, Vite's dev server proxies those same prefixes to FastAPI; there is no nginx.
 
-### Backend (`backend/app/`)
-- **`main.py`** — mounts all routers; adds `SetupGuardMiddleware`
-- **`middleware/setup_guard.py`** — blocks all endpoints with 503 until the DB key is loaded into memory. Always-allowed paths: `/health`, `/setup/*`, `/docs`, `/openapi.json`
-- **`database.py`** — module-level `_engine` (starts `None`); call `initialize_engine(db_path, key)` from the setup flow to create the SQLCipher engine. The key is held only in memory. A `_PysqlcipherConnWrapper` works around the `deterministic` kwarg incompatibility between SQLAlchemy 2.0 and pysqlcipher3
-- **`config.py`** — `pydantic-settings` `Settings`; reads from `.env`; raises at startup if `JWT_SECRET` is the insecure default
-- **`dependencies.py`** — FastAPI dependencies: `get_current_user` (JWT Bearer) and `get_current_user_by_api_key` (X-API-Key header, used by the MCP router)
-- **`models/`** — SQLModel table models: `User`, `Transaction`, `ExchangeRate`, `ApiKey`
+### Backend (`backend/app/`) — hexagonal layout
+- **`main.py`** — composition root: builds the DI `Container`, mounts all routers, defines the setup-guard middleware (503 until a vault is unlocked; always-allowed: `/health`, `/setup/*`, `/docs`, `/openapi.json`)
+- **`core/domain/`** — pure dataclasses + enums: `User`, `Transaction` (with `TransactionType`), `Category` (with `CategoryType` and `parent_id`), `Wallet` (with `WalletType`), `ExchangeRate`
+- **`core/ports/`** — abstract repository/provider interfaces (`TransactionRepository`, `WalletRepository`, `CategoryRepository`, `AIProvider`, `VaultManager`, ...)
+- **`application/`** — use-case services: `transaction_service` (CRUD + `transfer()`), `wallet_service`, `category_service`, `whisper_service` (the agent), `analytics_service`, `mcp_service`, `auth_service`, `csv_import_service`, `bank_sync_service`
+- **`infrastructure/`** — SQLModel repositories, `DatabaseManager` (SQLCipher engine + runtime `_run_migrations` ALTER TABLEs), `vault/manager.py`, `ai/` (OpenAI-compatible provider + factory)
+- **`api/`** — `container.py` (DI), `deps.py` (`get_current_user` JWT Bearer; `get_current_user_by_api_key` for MCP), `routes/` (one file per feature)
+- **`models/`** — SQLModel table models: `User`, `Transaction`, `ExchangeRate`, `ApiKey`, `Category`, `Wallet`, `BankConnection`. New models MUST be imported in `models/__init__.py` and `alembic/env.py`, or their tables are never created
 - **`schemas/`** — Pydantic request/response schemas (separate from table models)
-- **`services/`** — business logic layer called by routers: `auth`, `setup`, `transactions`, `csv_import`, `exchange_rate`, `api_key_service`, `openai_service`, `whisper_service`, `mcp_service`, `analytics_service`
-- **`routers/`** — one file per feature group matching the API prefix table in README
 
 ### Frontend (`frontend/src/`)
-- **`lib/api.ts`** — single axios instance with base URL `/`. Interceptor auto-refreshes JWT on 401 and stores tokens in `localStorage`
+- **`lib/api.ts`** — single axios instance with base URL `/`. Interceptor auto-refreshes JWT on 401 and stores tokens in `localStorage`; `apiErrorDetail()` extracts backend error messages
 - **`contexts/AuthContext.tsx`** — global auth state; consumed via `hooks/useAuth.ts`
-- **`hooks/`** — data-fetching hooks: `useTransactions`, `useWhisper`, `useSettings`
-- **`pages/`** — one file per route: `LoginPage`, `SetupPage`, `DashboardPage`, `TransactionsPage`, `WhisperPage`, `VisualizationsPage`, `SettingsPage`
-- **`components/layout/`** — `DashboardLayout` (wraps protected pages), `Sidebar`, `TopBar`, `ProtectedRoute`
-- **`components/features/`** — `TransactionForm`, `TransactionProposalCard` (Whisper review), `CsvImportDialog`
-- **`components/ui/`** — Shadcn UI primitives (auto-generated; don't hand-edit)
+- **`hooks/`** — data-fetching hooks: `useTransactions`, `useWallets`, `useCategories`, `useWhisper`, `useSettings`
+- **`pages/`** — one file per route: `LoginPage`, `SetupPage`, `DashboardPage`, `TransactionsPage`, `WalletsPage`, `VisualizationsPage`, `SettingsPage`
+- **`components/layout/`** — `DashboardLayout` (wraps protected pages, hosts `WhisperFAB`), `Sidebar`, `TopBar`, `ProtectedRoute`
+- **`components/features/`** — `TransactionForm`, `TransactionProposalCard` (Whisper review; also renders plain agent replies), `WhisperFAB`, `CsvImportDialog`
+- UI library is Fluent UI (`@fluentui/react-components`) + Tailwind-style utility classes
 - Path alias: `@/` maps to `frontend/src/`
 
 ### First-run setup flow
-1. Backend starts; `_engine` is `None`; all non-setup requests return 503
+1. Backend starts; engine is `None`; all non-setup requests return 503
 2. Browser hits `/setup/status` → redirected to `/setup` if not initialized
-3. User sets a passphrase → `/setup/initialize` → backend derives key via PBKDF2-SHA256 and calls `initialize_engine()`; a BIP39 24-word mnemonic is shown once
-4. Subsequent restarts require `/setup/unlock` (passphrase re-entry) or `/setup/recover` (mnemonic)
+3. User creates a vault — encrypted (`/setup/vaults`, passphrase → PBKDF2-SHA256 key, BIP39 24-word mnemonic shown once) or open/unencrypted (`/setup/vaults/open`)
+4. Subsequent restarts require `/setup/unlock` (passphrase) or `/setup/recover` (mnemonic); open vaults auto-unlock
 
-### Transaction model
-`amount_original` + `currency_original` (JOD or USD) → `amount_base` in JOD using `exchange_rate`. Soft-deleted via `is_deleted` flag. `source` field tracks `"manual"`, `"whisper"`, or `"csv"`.
+### Domain model
+- **Transaction** — `amount_original` + `currency_original` (JOD or USD) → `amount_base` in JOD via `exchange_rate`. `type` is `expense` | `income` | `transfer_out` | `transfer_in`; income/transfer_in add to a wallet's balance, the rest subtract. Soft-deleted via `is_deleted`. `source` tracks `"manual"`, `"whisper"`, `"csv_import"`, `"bank:*"`
+- **Wallet** — typed (`cash`/`digital`/`savings`/`credit`/`other`); balance = `initial_balance` + signed sum of its transactions (cached in `balance`, refreshed on read). Archived via `is_active=False`; hard delete only when no transactions reference it
+- **Transfer** — a linked pair of transactions sharing a `transfer_id`, categorized under the reserved `Transfer` category (type `transfer`). Deleting/editing one leg syncs the other; transfers are excluded from all spending/income analytics
+- **Category** — two-level hierarchy via `parent_id` (e.g. `Family Savings` under `Savings`). Defaults (incl. sub-categories) are seeded on first access; categories in use or with children cannot be deleted
+- **Whisper agent** — `POST /api/whisper/parse` classifies a message into an intent (`record_expense`, `record_income`, `transfer`, `query_balance`, `query_spending`, `unknown`), grounded in the user's wallets and categories. Mutating intents return a proposal held in a process-wide `ProposalStore` (TTL-bound) and are executed on `POST /api/whisper/confirm` (which accepts field `overrides`); queries are answered immediately
 
 ## Key conventions
 - Backend linter: `ruff` (line length 100, target Python 3.12). Run with `cd backend && ruff check .`

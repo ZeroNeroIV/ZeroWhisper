@@ -13,7 +13,7 @@ from app.core.domain.wallet import Wallet
 class WalletRepository(ABC):
 
     @abstractmethod
-    def list_by_user(self, user_id: UUID) -> list[Wallet]:
+    def list_by_user(self, user_id: UUID, include_inactive: bool = False) -> list[Wallet]:
         ...
 
     @abstractmethod
@@ -21,7 +21,17 @@ class WalletRepository(ABC):
         ...
 
     @abstractmethod
+    def find_by_name(self, user_id: UUID, name: str) -> Wallet | None:
+        """Case-insensitive lookup by wallet name."""
+        ...
+
+    @abstractmethod
     def save(self, wallet: Wallet) -> Wallet:
+        ...
+
+    @abstractmethod
+    def update(self, wallet: Wallet) -> Wallet:
+        """Persist changes to name/type/currency/icon/initial_balance/is_active."""
         ...
 
     @abstractmethod

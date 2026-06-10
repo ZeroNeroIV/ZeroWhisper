@@ -160,8 +160,7 @@ function SankeyTab() {
         </span>
       </p>
       <ResponsiveContainer width="100%" height={400}>
-        {/* @ts-ignore recharts Sankey has complex internal typing */}
-        <Sankey
+          <Sankey
           data={{ nodes: data.nodes, links: data.links }}
           nodePadding={20}
           nodeWidth={10}

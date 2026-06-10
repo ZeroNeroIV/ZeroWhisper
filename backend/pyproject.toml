@@ -33,6 +33,9 @@ dev = [
 requires = ["setuptools>=72"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -40,3 +43,12 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+# E712: SQLAlchemy column expressions require `== True/False`; `not col` and
+# `is False` don't translate to SQL.
+ignore = ["E712"]
+
+[tool.ruff.lint.per-file-ignores]
+# Routers are imported after `app` is created (composition-root pattern).
+"app/main.py" = ["E402"]

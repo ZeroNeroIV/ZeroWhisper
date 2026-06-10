@@ -1,23 +1,33 @@
 """
-Whisper use case — natural language → transaction proposal → confirmation.
+Whisper use case — natural language → financial action → confirmation.
 
-Eliminates the in-memory module-level `_pending` dict and the inline
-spending context queries from the old whisper_service.py. Now uses
-repository interfaces and an AI provider strategy.
+The agent classifies a message into an intent:
+- record_expense / record_income → confirmable transaction proposal
+- transfer                       → confirmable wallet-to-wallet transfer proposal
+- query_balance / query_spending → answered immediately from local data
+- unknown                        → clarification reply
+
+Proposals live in a ProposalStore owned by the DI container (one per
+process), because services are constructed per request — a store on the
+service instance would forget every proposal as soon as the request ended.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
 from app.core.config import settings
 from app.core.domain.transaction import Transaction as DomainTransaction
+from app.core.domain.wallet import Wallet
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.ports.ai_provider import AIProvider
-from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.category_repo import CategoryRepository
+from app.core.ports.transaction_repo import TransactionRepository
 from app.application.transaction_service import TransactionService
+from app.application.wallet_service import WalletService
+
+FALLBACK_CATEGORY = "Other"
 
 
 class PendingProposal:
@@ -29,58 +39,28 @@ class PendingProposal:
         self.created_at = datetime.utcnow()
 
 
-class WhisperService:
+class ProposalStore:
+    """In-memory pending-proposal store shared across requests, with TTL expiry."""
 
-    def __init__(
-        self,
-        tx_service: TransactionService,
-        tx_repo: TransactionRepository,
-        cat_repo: CategoryRepository,
-        ai_provider: AIProvider,
-        proposal_ttl_minutes: int = settings.whisper_proposal_ttl_minutes,
-    ) -> None:
-        self._tx_service = tx_service
-        self._tx_repo = tx_repo
-        self._cat_repo = cat_repo
-        self._ai = ai_provider
-        self._ttl = timedelta(minutes=proposal_ttl_minutes)
+    def __init__(self, ttl_minutes: int = settings.whisper_proposal_ttl_minutes) -> None:
+        self._ttl = timedelta(minutes=ttl_minutes)
         self._pending: dict[str, PendingProposal] = {}
 
-    async def parse_message(self, user_id: UUID, message: str) -> dict:
-        user_cats = self._cat_repo.find_by_user(user_id)
-        cat_names = [c.name for c in user_cats]
-
-        proposal = await self._ai.extract_transaction(message, cat_names)
-
-        now = datetime.utcnow()
-        month_start = date(now.year, now.month, 1)
-
-        spending = self._tx_repo.monthly_spending_by_category(
-            user_id, now.year, now.month,
-        )
-
-        this_month_total = spending.get(proposal["category"], Decimal("0"))
-        transaction_count = 0  # TODO: repo should expose count
-
-        persona = await self._ai.generate_persona(
-            proposal["category"],
-            float(this_month_total),
-            transaction_count,
-        )
-
+    def put(self, proposal_data: dict, user_id: UUID) -> str:
+        self._cleanup_expired()
         proposal_id = str(uuid4())
-        self._pending[proposal_id] = PendingProposal(proposal, str(user_id))
+        self._pending[proposal_id] = PendingProposal(proposal_data, str(user_id))
+        return proposal_id
 
-        return {
-            "proposal_id": proposal_id,
-            "proposal": proposal,
-            "persona_message": persona,
-            "spending_context": {
-                "category": proposal["category"],
-                "this_month_total": str(this_month_total),
-                "transaction_count": transaction_count,
-            },
-        }
+    def get(self, proposal_id: str, user_id: UUID) -> dict | None:
+        self._cleanup_expired()
+        entry = self._pending.get(proposal_id)
+        if not entry or entry.user_id != str(user_id):
+            return None
+        return entry.proposal_data
+
+    def remove(self, proposal_id: str) -> None:
+        self._pending.pop(proposal_id, None)
 
     def _cleanup_expired(self) -> None:
         cutoff = datetime.utcnow() - self._ttl
@@ -88,35 +68,274 @@ class WhisperService:
         for pid in expired:
             del self._pending[pid]
 
+
+class WhisperService:
+
+    def __init__(
+        self,
+        tx_service: TransactionService,
+        tx_repo: TransactionRepository,
+        cat_repo: CategoryRepository,
+        wallet_service: WalletService,
+        ai_provider: AIProvider,
+        proposal_store: ProposalStore,
+    ) -> None:
+        self._tx_service = tx_service
+        self._tx_repo = tx_repo
+        self._cat_repo = cat_repo
+        self._wallets = wallet_service
+        self._ai = ai_provider
+        self._store = proposal_store
+
+    # ── Parsing ───────────────────────────────────────────────────────────────────
+
+    async def parse_message(self, user_id: UUID, message: str) -> dict:
+        categories = self._cat_repo.seed_defaults(user_id)
+        cat_context = [
+            {"name": c.name, "type": c.type.value}
+            for c in categories if c.type.value != "transfer"
+        ]
+        wallets = self._wallets.list_wallets(user_id)
+        wallet_context = [
+            {"name": w.name, "type": w.type.value, "currency": w.currency}
+            for w in wallets
+        ]
+
+        action = await self._ai.extract_action(message, cat_context, wallet_context)
+        intent = action.get("intent", "unknown")
+
+        if intent in ("record_expense", "record_income"):
+            return await self._propose_transaction(user_id, intent, action, wallets)
+        if intent == "transfer":
+            return self._propose_transfer(user_id, action, wallets)
+        if intent == "query_balance":
+            return self._answer_balance(action, wallets)
+        if intent == "query_spending":
+            return self._answer_spending(user_id)
+        return self._clarify(action)
+
+    async def _propose_transaction(
+        self, user_id: UUID, intent: str, action: dict, wallets: list[Wallet],
+    ) -> dict:
+        if not action.get("amount") or action["amount"] <= 0:
+            return self._clarify(action, fallback="How much was it?")
+
+        category = action.get("category") or FALLBACK_CATEGORY
+        if not self._cat_repo.find_by_name(user_id, category):
+            category = FALLBACK_CATEGORY
+        wallet = _match_wallet(action.get("wallet"), wallets)
+
+        proposal = {
+            "kind": "transaction",
+            "intent": intent,
+            "amount_original": str(action["amount"]),
+            "currency_original": action.get("currency") or "JOD",
+            "category": category,
+            "description": action.get("description"),
+            "transaction_date": action.get("transaction_date"),
+            "wallet_id": str(wallet.id) if wallet else None,
+            "wallet_name": wallet.name if wallet else None,
+            "confidence": action.get("confidence", 0.0),
+        }
+        proposal_id = self._store.put(proposal, user_id)
+
+        now = datetime.utcnow()
+        spending = self._tx_repo.monthly_spending_by_category(user_id, now.year, now.month)
+        this_month_total = spending.get(category, Decimal("0"))
+        transaction_count = self._tx_repo.count_by_category_month(
+            user_id, category, now.year, now.month,
+        )
+        persona = await self._ai.generate_persona(
+            category, float(this_month_total), transaction_count,
+        )
+
+        return {
+            "action": "proposal",
+            "proposal_id": proposal_id,
+            "proposal": proposal,
+            "persona_message": persona,
+            "spending_context": {
+                "category": category,
+                "this_month_total": str(this_month_total),
+                "transaction_count": transaction_count,
+            },
+        }
+
+    def _propose_transfer(self, user_id: UUID, action: dict, wallets: list[Wallet]) -> dict:
+        if len(wallets) < 2:
+            return self._reply("You need at least two wallets to make a transfer. Create one on the Wallets page first.")
+        if not action.get("amount") or action["amount"] <= 0:
+            return self._clarify(action, fallback="How much do you want to transfer?")
+
+        from_wallet = _match_wallet(action.get("from_wallet"), wallets)
+        to_wallet = _match_wallet(action.get("to_wallet"), wallets)
+        if not from_wallet or not to_wallet:
+            names = ", ".join(w.name for w in wallets)
+            return self._reply(f"Which wallets should I move the money between? You have: {names}.")
+        if from_wallet.id == to_wallet.id:
+            return self._reply("The source and destination wallets are the same — which one should the money go to?")
+
+        proposal = {
+            "kind": "transfer",
+            "intent": "transfer",
+            "amount_original": str(action["amount"]),
+            "currency_original": action.get("currency") or from_wallet.currency,
+            "from_wallet_id": str(from_wallet.id),
+            "from_wallet_name": from_wallet.name,
+            "to_wallet_id": str(to_wallet.id),
+            "to_wallet_name": to_wallet.name,
+            "description": action.get("description"),
+            "transaction_date": action.get("transaction_date"),
+            "confidence": action.get("confidence", 0.0),
+        }
+        proposal_id = self._store.put(proposal, user_id)
+        return {
+            "action": "proposal",
+            "proposal_id": proposal_id,
+            "proposal": proposal,
+            "persona_message": (
+                f"Moving {proposal['amount_original']} {proposal['currency_original']} "
+                f"from {from_wallet.name} to {to_wallet.name} — confirm?"
+            ),
+            "spending_context": None,
+        }
+
+    def _answer_balance(self, action: dict, wallets: list[Wallet]) -> dict:
+        if not wallets:
+            return self._reply("You don't have any wallets yet. Create one on the Wallets page to start tracking balances.")
+        wallet = _match_wallet(action.get("wallet"), wallets)
+        if wallet:
+            return self._reply(
+                f"{wallet.name} holds {wallet.balance:.2f} JOD.",
+                data={"wallets": [_wallet_summary(wallet)]},
+            )
+        total = sum((w.balance for w in wallets), Decimal("0"))
+        lines = "; ".join(f"{w.name}: {w.balance:.2f}" for w in wallets)
+        return self._reply(
+            f"Across your {len(wallets)} wallets you have {total:.2f} JOD ({lines}).",
+            data={"wallets": [_wallet_summary(w) for w in wallets]},
+        )
+
+    def _answer_spending(self, user_id: UUID) -> dict:
+        now = datetime.utcnow()
+        type_map = self._cat_repo.get_type_map(user_id)
+        spending = self._tx_repo.monthly_spending_by_category(user_id, now.year, now.month)
+        expenses = {
+            cat: total for cat, total in spending.items()
+            if type_map.get(cat) not in ("income", "transfer")
+        }
+        if not expenses:
+            return self._reply("No spending recorded this month. Either impressive discipline or an empty ledger.")
+        total = sum(expenses.values(), Decimal("0"))
+        top = sorted(expenses.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        lines = "; ".join(f"{cat}: {amt:.2f}" for cat, amt in top)
+        return self._reply(
+            f"This month you've spent {total:.2f} JOD. Top categories — {lines}.",
+            data={"spending": [{"category": c, "total_jod": str(a)} for c, a in top]},
+        )
+
+    def _clarify(self, action: dict, fallback: str = "I didn't catch that — what would you like me to do?") -> dict:
+        return self._reply(action.get("reply") or fallback)
+
+    @staticmethod
+    def _reply(message: str, data: dict | None = None) -> dict:
+        return {
+            "action": "reply",
+            "proposal_id": None,
+            "proposal": None,
+            "persona_message": message,
+            "spending_context": None,
+            "data": data,
+        }
+
+    # ── Confirmation ──────────────────────────────────────────────────────────────
+
     def confirm(self, proposal_id: str, user_id: UUID, overrides: dict | None = None) -> DomainTransaction:
-        self._cleanup_expired()
-        entry = self._pending.get(proposal_id)
-        if not entry or entry.user_id != str(user_id):
+        proposal = self._store.get(proposal_id, user_id)
+        if proposal is None:
             raise NotFoundError("Proposal", proposal_id)
 
-        overrides = overrides or {}
-        proposal = entry.proposal_data
-        tx_date_str = proposal.get("transaction_date")
-        tx_date = date.fromisoformat(tx_date_str) if tx_date_str else datetime.utcnow().date()
+        merged = {**proposal, **(overrides or {})}
+        tx_date = _parse_date(merged.get("transaction_date"))
+        amount = _parse_amount(merged.get("amount_original"))
 
-        tx = self._tx_service.create(
-            user_id=user_id,
-            amount_original=Decimal(str(overrides.get("amount_original", proposal["amount_original"]))),
-            currency_original=overrides.get("currency_original", proposal["currency_original"]),
-            category=overrides.get("category", proposal["category"]),
-            transaction_date=overrides.get("transaction_date", tx_date),
-            description=overrides.get("description", proposal.get("description")),
-            source="whisper",
-        )
-        del self._pending[proposal_id]
+        if proposal["kind"] == "transfer":
+            out_leg, _ = self._tx_service.transfer(
+                user_id=user_id,
+                from_wallet_id=UUID(str(merged["from_wallet_id"])),
+                to_wallet_id=UUID(str(merged["to_wallet_id"])),
+                amount_original=amount,
+                currency_original=merged["currency_original"],
+                transaction_date=tx_date,
+                description=merged.get("description"),
+                source="whisper",
+            )
+            tx = out_leg
+        else:
+            wallet_id = merged.get("wallet_id")
+            tx = self._tx_service.create(
+                user_id=user_id,
+                amount_original=amount,
+                currency_original=merged["currency_original"],
+                category=merged["category"],
+                transaction_date=tx_date,
+                description=merged.get("description"),
+                source="whisper",
+                wallet_id=UUID(str(wallet_id)) if wallet_id else None,
+            )
+        self._store.remove(proposal_id)
         return tx
 
     def reject(self, proposal_id: str, user_id: UUID) -> bool:
-        entry = self._pending.get(proposal_id)
-        if not entry or entry.user_id != str(user_id):
+        if self._store.get(proposal_id, user_id) is None:
             return False
-        del self._pending[proposal_id]
+        self._store.remove(proposal_id)
         return True
 
     def get_ai_provider(self) -> AIProvider:
         return self._ai
+
+
+def _match_wallet(name: str | None, wallets: list[Wallet]) -> Wallet | None:
+    """Resolve a model-suggested wallet name against the user's wallets."""
+    if not name:
+        return None
+    needle = name.strip().lower()
+    for w in wallets:
+        if w.name.lower() == needle:
+            return w
+    for w in wallets:
+        if needle in w.name.lower() or w.name.lower() in needle:
+            return w
+    return None
+
+
+def _wallet_summary(w: Wallet) -> dict:
+    return {
+        "id": str(w.id),
+        "name": w.name,
+        "type": w.type.value,
+        "currency": w.currency,
+        "balance": str(w.balance),
+    }
+
+
+def _parse_date(value) -> date:
+    if isinstance(value, date):
+        return value
+    if value:
+        try:
+            return date.fromisoformat(str(value))
+        except ValueError:
+            pass
+    return datetime.utcnow().date()
+
+
+def _parse_amount(value) -> Decimal:
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError):
+        raise ValidationError(f"Invalid amount '{value}'")
+    if amount <= 0:
+        raise ValidationError("Amount must be positive")
+    return amount

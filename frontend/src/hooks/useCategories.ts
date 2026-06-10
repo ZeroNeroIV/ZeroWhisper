@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { api } from '@/lib/api'
+import { api, apiErrorDetail } from '@/lib/api'
 import type { Category, CategoryFormData } from '@/types/category'
 
 export function useCategories() {
@@ -11,10 +11,10 @@ export function useCategories() {
     try {
       const { data } = await api.get<Category[]>('/api/categories')
       setCategories(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to fetch categories:', err)
       const { toast } = await import('sonner')
-      toast.error(err?.response?.data?.detail || 'Failed to load categories')
+      toast.error(apiErrorDetail(err) || 'Failed to load categories')
     } finally {
       setLoading(false)
     }
@@ -26,7 +26,7 @@ export function useCategories() {
     return data
   }
 
-  const updateCategory = async (id: string, body: Partial<CategoryFormData>): Promise<Category> => {
+  const updateCategory = async (id: string, body: Partial<CategoryFormData> & { clear_parent?: boolean }): Promise<Category> => {
     const { data } = await api.put<Category>(`/api/categories/${id}`, body)
     setCategories((prev) => prev.map((c) => (c.id === id ? data : c)))
     return data

@@ -50,8 +50,22 @@ class TransactionRead(BaseModel):
     description: Optional[str]
     transaction_date: date
     source: str
+    type: str
     wallet_id: Optional[UUID] = None
+    transfer_id: Optional[UUID] = None
     created_at: str  # ISO format
+
+
+def tx_to_read(tx) -> TransactionRead:
+    """Map a domain Transaction to its API representation."""
+    return TransactionRead(
+        id=tx.id, user_id=tx.user_id, amount_original=tx.amount_original,
+        currency_original=tx.currency_original, amount_base=tx.amount_base,
+        exchange_rate=tx.exchange_rate, category=tx.category,
+        description=tx.description, transaction_date=tx.transaction_date,
+        source=tx.source, type=tx.type.value, wallet_id=tx.wallet_id,
+        transfer_id=tx.transfer_id, created_at=tx.created_at.isoformat(),
+    )
 
 
 class PaginatedTransactions(BaseModel):

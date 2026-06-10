@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlmodel import Session, select, or_
+from sqlmodel import Session, select
 
 from app.core.domain.user import User as DomainUser
 from app.core.ports.user_repo import UserRepository
@@ -37,18 +37,16 @@ class SQLModelUserRepository(UserRepository):
         )
 
     def find_by_id(self, user_id: UUID) -> DomainUser | None:
-        orm = self._session.get(ORMUser, str(user_id))
+        orm = self._session.get(ORMUser, user_id)
         return self._to_domain(orm) if orm else None
 
     def find_by_username(self, username: str) -> DomainUser | None:
-        from sqlmodel import select
         orm = self._session.exec(
             select(ORMUser).where(ORMUser.username == username)
         ).first()
         return self._to_domain(orm) if orm else None
 
     def find_by_username_or_email(self, username: str, email: str) -> DomainUser | None:
-        from sqlmodel import select
         orm = self._session.exec(
             select(ORMUser).where(
                 (ORMUser.username == username) | (ORMUser.email == email)

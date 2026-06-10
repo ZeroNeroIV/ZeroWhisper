@@ -5,7 +5,6 @@ import io
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Optional
 
 VALID_CURRENCIES = frozenset({"JOD", "USD"})
 REQUIRED_FIELDS = frozenset({"transaction_date", "amount_original"})

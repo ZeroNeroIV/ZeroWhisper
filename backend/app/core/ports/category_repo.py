@@ -38,7 +38,12 @@ class CategoryRepository(ABC):
 
     @abstractmethod
     def delete(self, cat_id: UUID, user_id: UUID) -> None:
-        """Delete category. Raises ConflictError if transactions reference it."""
+        """Delete category. Raises ConflictError if transactions or sub-categories reference it."""
+        ...
+
+    @abstractmethod
+    def has_children(self, cat_id: UUID, user_id: UUID) -> bool:
+        """True if any category has this one as its parent."""
         ...
 
     @abstractmethod
@@ -53,4 +58,9 @@ class CategoryRepository(ABC):
     @abstractmethod
     def seed_defaults(self, user_id: UUID) -> list[Category]:
         """Create default categories if none exist. Returns created categories."""
+        ...
+
+    @abstractmethod
+    def get_or_create_transfer_category(self, user_id: UUID) -> Category:
+        """The reserved category used by inter-wallet transfer legs."""
         ...

@@ -9,6 +9,7 @@ class CategoryType(str, Enum):
     INCOME = "income"
     EXPENSE = "expense"
     SAVINGS = "savings"
+    TRANSFER = "transfer"
 
 
 @dataclass
@@ -19,4 +20,5 @@ class Category:
     color: str | None = None
     icon: str | None = None
     is_default: bool = False
+    parent_id: UUID | None = None
     id: UUID = field(default_factory=uuid4)

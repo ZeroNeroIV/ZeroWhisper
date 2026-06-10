@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.category_service import CategoryService
-from app.core.domain.category import Category, CategoryType
+from app.core.domain.category import CategoryType
 from app.core.exceptions import NotFoundError
 from tests.helpers import InMemoryCategoryRepository
 

@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ArrowLeftRight, BarChart3, Settings, X } from 'lucide-react'
+import { LayoutDashboard, ArrowLeftRight, Wallet, BarChart3, Settings, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',      path: '/dashboard',      icon: LayoutDashboard },
   { label: 'Transactions',   path: '/transactions',   icon: ArrowLeftRight  },
+  { label: 'Wallets',        path: '/wallets',        icon: Wallet          },
   { label: 'Visualizations', path: '/visualizations', icon: BarChart3       },
   { label: 'Settings',       path: '/settings',       icon: Settings        },
 ]

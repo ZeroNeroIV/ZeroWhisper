@@ -50,6 +50,11 @@ def list_resources(_user: User = Depends(get_current_user_by_api_key)):
             "name": "Net Worth",
             "description": "Lifetime income vs expenses",
         },
+        {
+            "uri": "zerowhisper://wallets",
+            "name": "Wallets",
+            "description": "Wallets with type, currency and current balance",
+        },
     ]
 
 
@@ -65,6 +70,7 @@ def get_resource(
         "transactions/recent": lambda: service.get_recent_transactions(user.id),
         "transactions/by-category": lambda: service.get_spending_by_category(user.id, today.month, today.year),
         "net-worth": lambda: service.get_net_worth(user.id),
+        "wallets": lambda: service.get_wallets(user.id),
     }
     handler = mapping.get(resource_path)
     if not handler:
@@ -94,6 +100,8 @@ def call_tool(
         )
     elif tool == "get_net_worth":
         return service.get_net_worth(user.id)
+    elif tool == "get_wallets":
+        return service.get_wallets(user.id)
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown tool")
 

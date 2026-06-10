@@ -43,11 +43,17 @@ class TransactionRepository(ABC):
         date_to: date | None = None,
         source: str | None = None,
         wallet_id: UUID | None = None,
+        type: str | None = None,
     ) -> tuple[list[Transaction], int]:
         """Paginated, filterable list of non-deleted transactions.
 
         Returns (items, total_count). Page and page_size must be positive.
         """
+        ...
+
+    @abstractmethod
+    def find_by_transfer_id(self, transfer_id: UUID, user_id: UUID) -> list[Transaction]:
+        """Both legs of a transfer (non-deleted)."""
         ...
 
     @abstractmethod
@@ -62,7 +68,15 @@ class TransactionRepository(ABC):
 
     @abstractmethod
     def sum_by_wallet(self, wallet_id: UUID, user_id: UUID) -> Decimal:
-        """Sum amount_base for non-deleted transactions in a given wallet."""
+        """Signed sum of amount_base for non-deleted transactions in a wallet.
+
+        Income and incoming transfers add; expenses and outgoing transfers subtract.
+        """
+        ...
+
+    @abstractmethod
+    def count_by_category_month(self, user_id: UUID, category: str, year: int, month: int) -> int:
+        """Number of non-deleted transactions in a category for a given month."""
         ...
 
     @abstractmethod

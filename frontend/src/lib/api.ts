@@ -2,6 +2,15 @@ import axios from 'axios'
 
 export const api = axios.create({ baseURL: '/' })
 
+/** Extract the backend `detail` message from an unknown error, if present. */
+export function apiErrorDetail(err: unknown): string | undefined {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail
+    if (typeof detail === 'string') return detail
+  }
+  return undefined
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`

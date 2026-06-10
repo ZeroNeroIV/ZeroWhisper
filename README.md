@@ -8,7 +8,10 @@ Self-hosted personal finance manager with encrypted storage and an AI-powered ex
 - **Secure vaults**: AES-256 SQLCipher encryption, PBKDF2-SHA256 key derivation, BIP39 recovery phrase
 - **Open vaults**: unencrypted, no passphrase, auto-unlock on startup — anyone who can reach the app can register and log in
 - Dual-currency transactions (JOD + USD with exchange rate tracking)
-- Natural language expense entry via "Whisper" AI agent (OpenAI, Groq, or local Whisper)
+- **Wallets**: held money, digital money, savings, credit — each with its own balance; archive or rename anytime
+- **Transfers**: move money between wallets (e.g. Family Savings → Held Money) as linked double-entry transactions, excluded from spending analytics
+- **Hierarchical categories**: nest sub-categories under top-level ones (Salary/Freelance under Income, Family Savings under Savings, ...) and create your own
+- **Whisper agent**: natural language to actions — "spent 5 JOD on coffee from cash", "got my salary, 900", "move 200 from family savings to held money", "how much do I have?" (OpenAI, Gemini, Groq, or any OpenAI-compatible API)
 - Voice input with server-side transcription (local faster-whisper — free, offline, multilingual)
 - CSV import with automatic bank format detection
 - Interactive dashboards: cash flow, Sankey diagram, burn-rate heatmap, net worth trend
@@ -102,10 +105,12 @@ When the server is running, visit `http://localhost:8000/docs` for the interacti
 | `/setup` | Vault management (initialize, unlock, recover, list, create open vault) |
 | `/auth` | Login and token refresh |
 | `/api/transactions` | Create, list, update, delete transactions |
+| `/api/wallets` | Wallets (cash/digital/savings/credit) and inter-wallet transfers |
+| `/api/categories` | Categories with two-level hierarchy (sub-categories) |
 | `/api/imports` | CSV import |
 | `/api/exchange-rates` | JOD/USD rate management |
 | `/api/api-keys` | API key management |
-| `/api/whisper` | Natural language expense entry |
+| `/api/whisper` | Whisper agent: record expenses/income, transfer between wallets, query balances — all in natural language |
 | `/api/analytics` | Spending breakdowns and trends |
 | `/api/dashboard` | Dashboard data |
 | `/mcp` | MCP server endpoint |

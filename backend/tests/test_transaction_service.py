@@ -7,7 +7,6 @@ import pytest
 
 from app.application.transaction_service import TransactionService
 from app.application.exchange_rate_service import ExchangeRateService
-from app.core.domain.transaction import Transaction as DomainTransaction
 from app.core.domain.category import Category, CategoryType
 from app.core.exceptions import NotFoundError, ValidationError
 from tests.helpers import InMemoryTransactionRepository, InMemoryCategoryRepository

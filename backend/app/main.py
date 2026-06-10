@@ -11,7 +11,6 @@ No business logic lives here. No domain exceptions are raised here.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -20,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.container import Container
 from app.api.error_handlers import domain_error_handler
-from app.core.exceptions import DatabaseNotReadyError, DomainError
+from app.core.exceptions import DomainError
 
 logger = logging.getLogger(__name__)
 

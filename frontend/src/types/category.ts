@@ -1,4 +1,4 @@
-export type CategoryType = 'income' | 'expense' | 'savings'
+export type CategoryType = 'income' | 'expense' | 'savings' | 'transfer'
 
 export interface Category {
   id: string
@@ -8,6 +8,7 @@ export interface Category {
   color: string | null
   icon: string | null
   is_default: boolean
+  parent_id: string | null
 }
 
 export interface CategoryFormData {
@@ -15,4 +16,5 @@ export interface CategoryFormData {
   type: CategoryType
   color?: string
   icon?: string
+  parent_id?: string | null
 }

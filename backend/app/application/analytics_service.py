@@ -17,7 +17,6 @@ from uuid import UUID
 
 from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.category_repo import CategoryRepository
-from app.core.domain.category import CategoryType
 
 
 def _month_end(year: int, month: int) -> dt.date:
@@ -51,13 +50,12 @@ class AnalyticsService:
         type_map = self._cat_repo.get_type_map(user_id)
         savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
 
-        month_start = dt.date(year, month, 1)
-        month_end = _month_end(year, month)
-
         spending = self._tx_repo.monthly_spending_by_category(
             user_id, year, month,
             exclude_categories=savings_cats,
         )
+        if not spending:
+            return {"nodes": [], "links": [], "total_income": 0.0}
 
         total_income = Decimal("0")
         spending_cats: list[tuple[str, Decimal]] = []
@@ -81,9 +79,6 @@ class AnalyticsService:
     def get_heatmap(self, user_id: UUID, year: int, month: int) -> list[dict]:
         type_map = self._cat_repo.get_type_map(user_id)
         exclude_cats = [cat for cat, t in type_map.items() if t in ("income", "savings")]
-
-        month_start = dt.date(year, month, 1)
-        month_end = _month_end(year, month)
 
         # We need day-level breakdown; use the repo's monthly method
         spending = self._tx_repo.monthly_spending_by_category(

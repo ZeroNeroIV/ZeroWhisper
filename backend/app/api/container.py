@@ -18,7 +18,7 @@ from app.infrastructure.repositories.category_repo import SQLModelCategoryReposi
 from app.infrastructure.repositories.user_repo import SQLModelUserRepository
 from app.infrastructure.ai.factory import ConfigDrivenAIProviderFactory
 from app.application.transaction_service import TransactionService
-from app.application.whisper_service import WhisperService
+from app.application.whisper_service import ProposalStore, WhisperService
 from app.application.analytics_service import AnalyticsService
 from app.application.mcp_service import MCPService
 from app.application.category_service import CategoryService
@@ -43,6 +43,9 @@ class Container:
         self._db = _db_manager
         self._vault_manager = SqlCipherVaultManager(self._db, settings.setup_state_path)
         self._ai_factory = ConfigDrivenAIProviderFactory()
+        # Pending Whisper proposals must outlive a single request, so the
+        # store is a process-level singleton injected into each WhisperService.
+        self._proposal_store = ProposalStore()
 
     # ── Infrastructure (instantiated once) ────────────────────────────────────────
 
@@ -88,16 +91,20 @@ class Container:
         cat_repo = self.category_repo(session)
         rate_repo = self._exchange_rate_repo(session)
         rate_service = ExchangeRateService(rate_repo)
-        return TransactionService(tx_repo, cat_repo, rate_service)
+        return TransactionService(tx_repo, cat_repo, rate_service, self._wallet_repo(session))
 
     def whisper_service(self, session: Session) -> WhisperService:
         tx_repo = self._transaction_repo(session)
         cat_repo = self.category_repo(session)
-        rate_repo = self._exchange_rate_repo(session)
-        rate_service = ExchangeRateService(rate_repo)
-        tx_service = TransactionService(tx_repo, cat_repo, rate_service)
         provider = self._ai_factory.create_provider()
-        return WhisperService(tx_service, tx_repo, cat_repo, provider)
+        return WhisperService(
+            self.transaction_service(session),
+            tx_repo,
+            cat_repo,
+            self.wallet_service(session),
+            provider,
+            self._proposal_store,
+        )
 
     def analytics_service(self, session: Session) -> AnalyticsService:
         return AnalyticsService(
@@ -109,6 +116,7 @@ class Container:
         return MCPService(
             self._transaction_repo(session),
             self.category_repo(session),
+            self.wallet_service(session),
         )
 
     def category_service(self, session: Session) -> CategoryService:

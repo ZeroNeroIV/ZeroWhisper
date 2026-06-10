@@ -46,10 +46,10 @@ class TestGetHistory:
 
 
 class TestToggleAutoFetch:
-    def test_enables(self, svc: ExchangeRateService, _repo: MagicMock) -> None:
+    def test_enables(self, svc: ExchangeRateService) -> None:
         result = svc.toggle_auto_fetch(True)
         assert result is True
 
-    def test_disables(self, svc: ExchangeRateService, _repo: MagicMock) -> None:
+    def test_disables(self, svc: ExchangeRateService) -> None:
         result = svc.toggle_auto_fetch(False)
         assert result is False

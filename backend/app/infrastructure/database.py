@@ -123,23 +123,51 @@ class DatabaseManager:
             inspector = inspect(conn)
             existing = inspector.get_table_names()
 
-            # Category icon column
-            if "category" in existing:
-                try:
-                    col_names = [c["name"] for c in inspector.get_columns("category")]
-                    if "icon" not in col_names:
-                        conn.execute(text("ALTER TABLE category ADD COLUMN icon VARCHAR"))
+            def add_missing_columns(table: str, columns: dict[str, str]) -> list[str]:
+                """ALTER TABLE for each column missing from `table`. Returns added names."""
+                if table not in existing:
+                    return []
+                added: list[str] = []
+                col_names = [c["name"] for c in inspector.get_columns(table)]
+                for name, ddl in columns.items():
+                    if name in col_names:
+                        continue
+                    try:
+                        conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN {name} {ddl}'))
                         conn.commit()
-                except Exception:
-                    conn.rollback()
+                        added.append(name)
+                    except Exception:
+                        conn.rollback()
+                return added
 
-            # Wallet + wallet_id on transaction (added in wallet feature)
-            if "transaction" in existing:
+            add_missing_columns("category", {
+                "icon": "VARCHAR",
+                "parent_id": "VARCHAR REFERENCES category(id)",
+            })
+            add_missing_columns("wallet", {
+                "type": "VARCHAR NOT NULL DEFAULT 'cash'",
+                "initial_balance": "NUMERIC(18,6) NOT NULL DEFAULT 0",
+                "icon": "VARCHAR",
+            })
+            tx_added = add_missing_columns("transaction", {
+                "wallet_id": "VARCHAR",
+                "type": "VARCHAR NOT NULL DEFAULT 'expense'",
+                "transfer_id": "VARCHAR",
+            })
+
+            # Backfill transaction.type from the owning user's category types so
+            # pre-existing income/savings rows don't get treated as expenses.
+            if "type" in tx_added:
                 try:
-                    col_names = [c["name"] for c in inspector.get_columns("transaction")]
-                    if "wallet_id" not in col_names:
-                        conn.execute(text("ALTER TABLE transaction ADD COLUMN wallet_id VARCHAR"))
-                        conn.commit()
+                    conn.execute(text(
+                        'UPDATE "transaction" SET type=\'income\' WHERE EXISTS ('
+                        "  SELECT 1 FROM category c"
+                        '  WHERE c.user_id = "transaction".user_id'
+                        '    AND c.name = "transaction".category'
+                        "    AND c.type = 'income'"
+                        ")"
+                    ))
+                    conn.commit()
                 except Exception:
                     conn.rollback()
 

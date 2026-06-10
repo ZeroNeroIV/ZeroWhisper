@@ -21,6 +21,7 @@ import {
   TableHeaderCell,
   TableCell,
   Field,
+  Select,
 } from '@fluentui/react-components'
 import { Pencil, Trash2, Save } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -29,7 +30,7 @@ import { useApiKeys, useExchangeRates, useExchangeRateSettings, type FxSettings 
 import { useBankConnections, type BankConnection } from '@/hooks/useBankConnections'
 import { useCategories } from '@/hooks/useCategories'
 import type { Category } from '@/types/category'
-import { api } from '@/lib/api'
+import { api, apiErrorDetail } from '@/lib/api'
 
 // ─── API Keys Tab ─────────────────────────────────────────────────────────────
 
@@ -293,6 +294,7 @@ function CategoriesTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formName, setFormName] = useState('')
   const [formType, setFormType] = useState<'income' | 'expense' | 'savings'>('expense')
+  const [formParent, setFormParent] = useState('')
   const [formColor, setFormColor] = useState('#6b7280')
   const [formIcon, setFormIcon] = useState('')
   const [colorTab, setColorTab] = useState<'solid' | 'gradient' | 'animated'>('solid')
@@ -320,6 +322,7 @@ function CategoriesTab() {
     setEditingId(null)
     setFormName('')
     setFormType('expense')
+    setFormParent('')
     setFormColor('#6b7280')
     setFormIcon('')
     setColorTab('solid')
@@ -333,7 +336,8 @@ function CategoriesTab() {
   const openEdit = (cat: Category) => {
     setEditingId(cat.id)
     setFormName(cat.name)
-    setFormType(cat.type)
+    setFormType(cat.type as 'income' | 'expense' | 'savings')
+    setFormParent(cat.parent_id ?? '')
     const color = cat.color || '#6b7280'
     setFormColor(color)
     setFormIcon(cat.icon || '')
@@ -416,15 +420,22 @@ function CategoriesTab() {
     try {
       const icon = formIcon.trim() || undefined
       if (editingId) {
-        await updateCategory(editingId, { name: formName.trim(), type: formType, color: formColor, icon })
+        await updateCategory(editingId, {
+          name: formName.trim(), type: formType, color: formColor, icon,
+          parent_id: formParent || undefined,
+          ...(formParent ? {} : { clear_parent: true }),
+        })
         toast.success('Category updated')
       } else {
-        await createCategory({ name: formName.trim(), type: formType, color: formColor, icon })
+        await createCategory({
+          name: formName.trim(), type: formType, color: formColor, icon,
+          parent_id: formParent || undefined,
+        })
         toast.success('Category created')
       }
       setDialogOpen(false)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to save category')
+    } catch (err: unknown) {
+      toast.error(apiErrorDetail(err) || 'Failed to save category')
     } finally {
       setSaving(false)
     }
@@ -442,8 +453,8 @@ function CategoriesTab() {
     try {
       await deleteCategory(cat.id)
       toast.success('Category deleted')
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to delete category')
+    } catch (err: unknown) {
+      toast.error(apiErrorDetail(err) || 'Failed to delete category')
     }
     setDeleteCatTarget(null)
   }
@@ -461,15 +472,21 @@ function CategoriesTab() {
         <p className="text-sm text-muted-foreground">No categories yet.</p>
       ) : (
         <div className="space-y-2">
-          {categories.map((cat) => (
-            <div key={cat.id} className="flex items-center justify-between rounded-lg border px-4 py-3">
+          {categories
+            .filter((c) => !c.parent_id)
+            .flatMap((root) => [root, ...categories.filter((c) => c.parent_id === root.id)])
+            .map((cat) => (
+            <div
+              key={cat.id}
+              className={`flex items-center justify-between rounded-lg border px-4 py-3 ${cat.parent_id ? 'ml-6' : ''}`}
+            >
               <div className="flex items-center gap-3">
                 <ColorSwatch color={cat.color} size={14} />
                 {cat.icon && <span className="text-base">{cat.icon}</span>}
                 <div>
                   <span className="text-sm font-medium">{cat.name}</span>
                   <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
-                    cat.type === 'income' ? 'bg-green-100 text-green-700' : cat.type === 'savings' ? 'bg-cyan-100 text-cyan-700' : 'bg-red-100 text-red-700'
+                    cat.type === 'income' ? 'bg-green-100 text-green-700' : cat.type === 'savings' ? 'bg-cyan-100 text-cyan-700' : cat.type === 'transfer' ? 'bg-indigo-100 text-indigo-700' : 'bg-red-100 text-red-700'
                   }`}>
                     {cat.type}
                   </span>
@@ -516,6 +533,19 @@ function CategoriesTab() {
                       </button>
                     ))}
                   </div>
+                </Field>
+
+                <Field label="Parent category (optional)" hint="Nest this under a top-level category, e.g. Family Savings under Savings">
+                  <Select value={formParent} onChange={(e) => setFormParent(e.target.value)}>
+                    <option value="">None (top-level)</option>
+                    {categories
+                      .filter((c) => !c.parent_id && c.id !== editingId && c.type !== 'transfer')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.icon ? `${c.icon} ` : ''}{c.name}
+                        </option>
+                      ))}
+                  </Select>
                 </Field>
 
                 <Field label="Icon (emoji)">
@@ -1690,7 +1720,7 @@ const VALID_TABS = ['api-keys', 'categories', 'exchange-rates', 'banks', 'securi
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = VALID_TABS.includes(searchParams.get('tab') as any) ? searchParams.get('tab')! : 'api-keys'
+  const activeTab = VALID_TABS.includes(searchParams.get('tab') as typeof VALID_TABS[number]) ? searchParams.get('tab')! : 'api-keys'
 
   const setActiveTab = (tab: string) => {
     setSearchParams({ tab }, { replace: true })
