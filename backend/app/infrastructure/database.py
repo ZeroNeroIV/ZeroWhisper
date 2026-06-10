@@ -109,6 +109,11 @@ class DatabaseManager:
         """Create all tables defined in SQLModel metadata."""
         if self._engine is None:
             raise RuntimeError("Engine not initialized")
+        # Table models register themselves on SQLModel.metadata at import
+        # time; create_all on an unpopulated metadata silently creates
+        # nothing, so make the registration explicit instead of relying on
+        # the caller having imported app.main first.
+        from app import models  # noqa: F401
         SQLModel.metadata.create_all(self._engine)
         self._run_migrations()
 

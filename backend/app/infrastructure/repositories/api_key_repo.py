@@ -60,7 +60,7 @@ class SQLModelApiKeyRepository(ApiKeyRepository):
         ).first()
         if not api_key:
             return None
-        orm = self._session.get(ORMUser, str(api_key.user_id))
+        orm = self._session.get(ORMUser, api_key.user_id)
         if not orm:
             return None
         return User(id=orm.id, username=orm.username, email=orm.email, hashed_password=orm.hashed_password), api_key.id
