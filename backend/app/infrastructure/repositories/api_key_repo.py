@@ -3,7 +3,7 @@ SQLModel-backed ApiKeyRepository implementation.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from app.core.time import utc_now
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -22,7 +22,7 @@ class SQLModelApiKeyRepository(ApiKeyRepository):
     def create(self, user_id: UUID, key_hash: str, prefix: str, name: str) -> ApiKeyData:
         orm = ORMApiKey(user_id=user_id, key_hash=key_hash, prefix=prefix, name=name)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return ApiKeyData(
             id=orm.id, prefix=orm.prefix, name=orm.name,
@@ -51,7 +51,7 @@ class SQLModelApiKeyRepository(ApiKeyRepository):
             return False
         key.is_active = False
         self._session.add(key)
-        self._session.commit()
+        self._session.flush()
         return True
 
     def find_user_by_key_hash(self, key_hash: str) -> tuple[User, int] | None:
@@ -68,6 +68,6 @@ class SQLModelApiKeyRepository(ApiKeyRepository):
     def touch_last_used(self, key_id: int) -> None:
         key = self._session.get(ORMApiKey, key_id)
         if key:
-            key.last_used_at = datetime.utcnow()
+            key.last_used_at = utc_now()
             self._session.add(key)
-            self._session.commit()
+            self._session.flush()

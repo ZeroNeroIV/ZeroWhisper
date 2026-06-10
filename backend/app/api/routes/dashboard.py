@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.analytics_service import AnalyticsService

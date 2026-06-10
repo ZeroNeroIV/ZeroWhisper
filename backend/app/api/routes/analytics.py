@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.analytics_service import AnalyticsService

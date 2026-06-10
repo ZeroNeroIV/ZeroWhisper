@@ -95,53 +95,62 @@ class TransactionRepository(ABC):
         year: int,
         month: int,
         exclude_categories: list[str] | None = None,
+        types: list[str] | None = None,
     ) -> dict[str, Decimal]:
         """Aggregate amount_base per category for a given month.
 
-        Returns {category_name: total_amount}. Excludes deleted transactions.
+        Returns {category_name: total_amount}. Transfers and deleted rows are
+        always excluded; `types` further restricts to the given transaction types.
         """
         ...
 
     @abstractmethod
-    def cash_flow(
-        self,
-        user_id: UUID,
-        from_date: date,
-        to_date: date,
-        income_categories: list[str],
-        savings_categories: list[str],
-    ) -> list[dict]:
-        """Daily income/expense aggregates for date range.
-
-        Returns sorted list of {date, income, expenses, balance} dicts.
-        """
-        ...
-
-    @abstractmethod
-    def net_worth_trend(
-        self,
-        user_id: UUID,
-        income_categories: list[str],
-        expense_categories: list[str],
-    ) -> list[dict]:
-        """Monthly cumulative net worth.
-
-        Returns sorted list of {month: str, net_worth: float} dicts.
-        """
-        ...
-
-    @abstractmethod
-    def monthly_totals_by_type(
+    def daily_spending_by_category(
         self,
         user_id: UUID,
         year: int,
         month: int,
-        type_map: dict[str, str],
-        savings_categories: list[str],
-    ) -> tuple[Decimal, Decimal]:
-        """Total income and total expenses for a month.
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[int, str, Decimal]]:
+        """Per-day, per-category expense totals for a month.
 
-        Returns (total_income, total_expenses). Helper for dashboard.
+        Returns (day_of_month, category, total) tuples for expense-type rows.
+        """
+        ...
+
+    @abstractmethod
+    def daily_flow(
+        self,
+        user_id: UUID,
+        from_date: date,
+        to_date: date,
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[date, Decimal, Decimal]]:
+        """Daily (date, income, expenses) totals classified by transaction type.
+
+        Sorted by date; transfers excluded.
+        """
+        ...
+
+    @abstractmethod
+    def monthly_net(self, user_id: UUID) -> list[tuple[str, Decimal]]:
+        """Per-month net (income - expenses) by transaction type, sorted by month.
+
+        Returns ("YYYY-MM", net) tuples; transfers excluded.
+        """
+        ...
+
+    @abstractmethod
+    def totals_by_type(
+        self,
+        user_id: UUID,
+        year: int | None = None,
+        month: int | None = None,
+        exclude_categories: list[str] | None = None,
+    ) -> tuple[Decimal, Decimal]:
+        """(total_income, total_expenses) classified by transaction type.
+
+        Scoped to a month when year+month given, lifetime otherwise.
         """
         ...
 

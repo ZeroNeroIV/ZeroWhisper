@@ -11,7 +11,7 @@ import { Field } from '@/components/ui/Field'
 import { Card } from '@/components/ui/Card'
 import { TabList, Tab } from '@/components/ui/Tabs'
 
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/hooks/useAuth'
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 

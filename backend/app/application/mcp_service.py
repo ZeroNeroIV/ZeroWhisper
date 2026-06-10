@@ -8,6 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
+from app.core.domain.transaction import BASE_CURRENCY
 from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.category_repo import CategoryRepository
 from app.application.wallet_service import WalletService
@@ -40,16 +41,15 @@ class MCPService:
         ]
 
     def get_balance(self, user_id: UUID) -> dict:
-        type_map = self._cat_repo.get_type_map(user_id)
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        expense_cats = [cat for cat, t in type_map.items() if t == "expense"]
-
-        income = self._tx_repo.sum_by_categories(user_id, income_cats)
-        expenses = self._tx_repo.sum_by_categories(user_id, expense_cats)
-
+        savings_cats = [
+            cat for cat, t in self._cat_repo.get_type_map(user_id).items() if t == "savings"
+        ]
+        income, expenses = self._tx_repo.totals_by_type(
+            user_id, exclude_categories=savings_cats,
+        )
         return {
             "balance_jod": str(income - expenses),
-            "currency": "JOD",
+            "currency": BASE_CURRENCY,
         }
 
     def get_recent_transactions(self, user_id: UUID, limit: int = 10) -> list[dict]:
@@ -67,14 +67,13 @@ class MCPService:
         ]
 
     def get_spending_by_category(self, user_id: UUID, month: int, year: int) -> list[dict]:
-        type_map = self._cat_repo.get_type_map(user_id)
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
-        exclude_cats = income_cats + savings_cats
-
+        savings_cats = [
+            cat for cat, t in self._cat_repo.get_type_map(user_id).items() if t == "savings"
+        ]
         spending = self._tx_repo.monthly_spending_by_category(
             user_id, year, month,
-            exclude_categories=exclude_cats,
+            exclude_categories=savings_cats,
+            types=["expense"],
         )
 
         grand_total = sum(spending.values(), Decimal("0"))
@@ -91,13 +90,12 @@ class MCPService:
         return result
 
     def get_net_worth(self, user_id: UUID) -> dict:
-        type_map = self._cat_repo.get_type_map(user_id)
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        expense_cats = [cat for cat, t in type_map.items() if t == "expense"]
-        savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
-
-        total_income = self._tx_repo.sum_by_categories(user_id, income_cats)
-        total_expenses = self._tx_repo.sum_by_categories(user_id, expense_cats)
+        savings_cats = [
+            cat for cat, t in self._cat_repo.get_type_map(user_id).items() if t == "savings"
+        ]
+        total_income, total_expenses = self._tx_repo.totals_by_type(
+            user_id, exclude_categories=savings_cats,
+        )
         total_savings = self._tx_repo.sum_by_categories(user_id, savings_cats)
 
         return {

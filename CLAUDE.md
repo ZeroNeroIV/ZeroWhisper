@@ -63,7 +63,7 @@ In dev mode, Vite's dev server proxies those same prefixes to FastAPI; there is 
 - **`core/domain/`** — pure dataclasses + enums: `User`, `Transaction` (with `TransactionType`), `Category` (with `CategoryType` and `parent_id`), `Wallet` (with `WalletType`), `ExchangeRate`
 - **`core/ports/`** — abstract repository/provider interfaces (`TransactionRepository`, `WalletRepository`, `CategoryRepository`, `AIProvider`, `VaultManager`, ...)
 - **`application/`** — use-case services: `transaction_service` (CRUD + `transfer()`), `wallet_service`, `category_service`, `whisper_service` (the agent), `analytics_service`, `mcp_service`, `auth_service`, `csv_import_service`, `bank_sync_service`
-- **`infrastructure/`** — SQLModel repositories, `DatabaseManager` (SQLCipher engine + runtime `_run_migrations` ALTER TABLEs), `vault/manager.py`, `ai/` (OpenAI-compatible provider + factory)
+- **`infrastructure/`** — SQLModel repositories (flush-only — the request-scoped session in `DatabaseManager.get_session` is the unit-of-work boundary: commit on success, rollback on exception), `DatabaseManager` (SQLCipher engine + runtime `_run_migrations` ALTER TABLEs), `vault/manager.py`, `ai/` (OpenAI-compatible provider + factory)
 - **`api/`** — `container.py` (DI), `deps.py` (`get_current_user` JWT Bearer; `get_current_user_by_api_key` for MCP), `routes/` (one file per feature)
 - **`models/`** — SQLModel table models: `User`, `Transaction`, `ExchangeRate`, `ApiKey`, `Category`, `Wallet`, `BankConnection`. New models MUST be imported in `models/__init__.py` and `alembic/env.py`, or their tables are never created
 - **`schemas/`** — Pydantic request/response schemas (separate from table models)
@@ -75,6 +75,7 @@ In dev mode, Vite's dev server proxies those same prefixes to FastAPI; there is 
 - **`pages/`** — one file per route: `LoginPage`, `SetupPage`, `DashboardPage`, `TransactionsPage`, `WalletsPage`, `VisualizationsPage`, `SettingsPage`
 - **`components/layout/`** — `DashboardLayout` (wraps protected pages, hosts `WhisperFAB`), `Sidebar`, `TopBar`, `ProtectedRoute`
 - **`components/features/`** — `TransactionForm`, `TransactionProposalCard` (Whisper review; also renders plain agent replies), `WhisperFAB`, `CsvImportDialog`
+- **`features/settings/`** — one file per Settings tab (`ApiKeysTab`, `CategoriesTab`, `ExchangeRatesTab`, `BanksTab`, `AiTab`, `AboutTab`); `lib/colorStyle.ts` is the single parser/builder for the category color protocol (solid / gradient / `animated:` prefix)
 - UI library is Fluent UI (`@fluentui/react-components`) + Tailwind-style utility classes
 - Path alias: `@/` maps to `frontend/src/`
 
@@ -93,7 +94,8 @@ In dev mode, Vite's dev server proxies those same prefixes to FastAPI; there is 
 
 ## Key conventions
 - Backend linter: `ruff` (line length 100, target Python 3.12). Run with `cd backend && ruff check .`
-- All monetary columns use `Numeric(precision=18, scale=6)` via SQLAlchemy `Column` — never `float`
+- All monetary columns use `Numeric(precision=18, scale=6)` via SQLAlchemy `Column` — never `float`. Aggregations stay `Decimal` end-to-end; rounding to float happens once at the presentation edge
+- Income vs expense is classified by `Transaction.type`, never by looking the category name up in a type map; category types only drive the orthogonal savings dimension
 - The MCP router authenticates via API key (`X-API-Key`), not JWT; all other protected routes use JWT Bearer
 - Alembic autogenerate requires the models to be imported before `SQLModel.metadata` is inspected — `alembic/env.py` imports all models explicitly
 - E2E tests run against the full Docker stack on port 80; `globalSetup` handles initialization state

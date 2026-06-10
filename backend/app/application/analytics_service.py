@@ -1,13 +1,14 @@
 """
 Analytics use cases — cash flow, Sankey, heatmap, net worth trend.
 
-Every analytics function follows the same pattern:
-1. Get category type map and savings categories from the repo
-2. Compute using TransactionRepository aggregation methods
-3. Return presentation-ready dicts
+Direction (income vs expense) is classified by the transaction's own `type`
+column — the single source of truth — never by looking the category name up
+in a type map. Category types are only used for the orthogonal "savings"
+dimension (savings are excluded from spending views but still belong to the
+user's balance).
 
-This replaces the old analytics_service.py which duplicated category lookups
-and month-end calculation in every function.
+All aggregation stays in Decimal; rounding to float happens once, here, at
+the presentation edge.
 """
 from __future__ import annotations
 
@@ -19,15 +20,8 @@ from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.category_repo import CategoryRepository
 
 
-def _month_end(year: int, month: int) -> dt.date:
-    """Return the first day of the next month (for exclusive range queries).
-
-    This eliminates the if/else for December that was duplicated across
-    3 files in the old code.
-    """
-    if month == 12:
-        return dt.date(year + 1, 1, 1)
-    return dt.date(year, month + 1, 1)
+def _round(value: Decimal) -> float:
+    return float(round(value, 2))
 
 
 class AnalyticsService:
@@ -40,82 +34,78 @@ class AnalyticsService:
         self._tx_repo = tx_repo
         self._cat_repo = cat_repo
 
-    def get_cash_flow(self, user_id: UUID, from_date: dt.date, to_date: dt.date) -> list[dict]:
+    def _savings_categories(self, user_id: UUID) -> list[str]:
         type_map = self._cat_repo.get_type_map(user_id)
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
-        return self._tx_repo.cash_flow(user_id, from_date, to_date, income_cats, savings_cats)
+        return [cat for cat, t in type_map.items() if t == "savings"]
+
+    def get_cash_flow(self, user_id: UUID, from_date: dt.date, to_date: dt.date) -> list[dict]:
+        savings = self._savings_categories(user_id)
+        rows = self._tx_repo.daily_flow(user_id, from_date, to_date, exclude_categories=savings)
+
+        result: list[dict] = []
+        running = Decimal("0")
+        for day, income, expenses in rows:
+            running += income - expenses
+            result.append({
+                "date": str(day),
+                "income": _round(income),
+                "expenses": _round(expenses),
+                "balance": _round(running),
+            })
+        return result
 
     def get_sankey(self, user_id: UUID, year: int, month: int) -> dict:
-        type_map = self._cat_repo.get_type_map(user_id)
-        savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
-
+        savings = self._savings_categories(user_id)
         spending = self._tx_repo.monthly_spending_by_category(
             user_id, year, month,
-            exclude_categories=savings_cats,
+            exclude_categories=savings,
+            types=["expense"],
         )
-        if not spending:
+        total_income, _ = self._tx_repo.totals_by_type(user_id, year, month)
+        if not spending and total_income == 0:
             return {"nodes": [], "links": [], "total_income": 0.0}
 
-        total_income = Decimal("0")
-        spending_cats: list[tuple[str, Decimal]] = []
-        for cat, total in spending.items():
-            if type_map.get(cat) == "income":
-                total_income += total
-            else:
-                spending_cats.append((cat, total))
-
+        spending_cats = sorted(spending.items(), key=lambda kv: kv[1], reverse=True)
         nodes = [{"name": "Income"}] + [{"name": cat} for cat, _ in spending_cats]
         links = [
-            {"source": 0, "target": i + 1, "value": round(float(val), 2)}
+            {"source": 0, "target": i + 1, "value": _round(val)}
             for i, (_, val) in enumerate(spending_cats)
         ]
         return {
             "nodes": nodes,
             "links": links,
-            "total_income": round(float(total_income), 2),
+            "total_income": _round(total_income),
         }
 
     def get_heatmap(self, user_id: UUID, year: int, month: int) -> list[dict]:
-        type_map = self._cat_repo.get_type_map(user_id)
-        exclude_cats = [cat for cat, t in type_map.items() if t in ("income", "savings")]
-
-        # We need day-level breakdown; use the repo's monthly method
-        spending = self._tx_repo.monthly_spending_by_category(
+        savings = self._savings_categories(user_id)
+        rows = self._tx_repo.daily_spending_by_category(
             user_id, year, month,
-            exclude_categories=exclude_cats,
+            exclude_categories=savings,
         )
-        # Heatmap requires per-day per-category breakdown
-        # For now, return category-level totals (improvement for Phase 3)
         return [
-            {"category": cat, "amount": round(float(total), 2)}
-            for cat, total in sorted(spending.items(), key=lambda x: -float(x[1]))
-            if type_map.get(cat) != "income"
+            {"day": day, "category": category, "amount": _round(total)}
+            for day, category, total in rows
         ]
 
     def get_net_worth_trend(self, user_id: UUID) -> list[dict]:
-        type_map = self._cat_repo.get_type_map(user_id)
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        expense_cats = [cat for cat, t in type_map.items() if t == "expense"]
-
-        return self._tx_repo.net_worth_trend(user_id, income_cats, expense_cats)
+        cumulative = Decimal("0")
+        result = []
+        for month, net in self._tx_repo.monthly_net(user_id):
+            cumulative += net
+            result.append({"month": month, "net_worth": _round(cumulative)})
+        return result
 
     def get_dashboard_summary(self, user_id: UUID) -> dict:
-        type_map = self._cat_repo.get_type_map(user_id)
-        savings_cats = [cat for cat, t in type_map.items() if t == "savings"]
-        income_cats = [cat for cat, t in type_map.items() if t == "income"]
-        expense_cats = [cat for cat, t in type_map.items() if t == "expense"]
-
+        savings_cats = self._savings_categories(user_id)
         now = dt.date.today()
 
-        # Lifetime balance
-        total_income = self._tx_repo.sum_by_categories(user_id, income_cats)
-        total_expenses = self._tx_repo.sum_by_categories(user_id, expense_cats)
+        total_income, total_expenses = self._tx_repo.totals_by_type(
+            user_id, exclude_categories=savings_cats,
+        )
         total_savings = self._tx_repo.sum_by_categories(user_id, savings_cats)
-
-        # Monthly totals
-        month_income, month_expenses = self._tx_repo.monthly_totals_by_type(
-            user_id, now.year, now.month, type_map, savings_cats,
+        month_income, month_expenses = self._tx_repo.totals_by_type(
+            user_id, now.year, now.month, exclude_categories=savings_cats,
         )
 
         recent = self._tx_repo.recent(user_id, limit=5)

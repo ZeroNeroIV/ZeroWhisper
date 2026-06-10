@@ -1,4 +1,5 @@
 import type { Category } from '@/types/category'
+import { isAnimated, isGradient, stripAnimated } from '@/lib/colorStyle'
 
 export function renderCategoryLabel(categoryName: string, categories: Category[]): React.ReactNode {
   const cat = categories.find((c) => c.name === categoryName)
@@ -7,21 +8,11 @@ export function renderCategoryLabel(categoryName: string, categories: Category[]
 
   const textEl = (() => {
     if (!color) return <span className="text-xs font-medium text-muted-foreground">{categoryName}</span>
-    if (color.startsWith('animated:')) {
+    if (isGradient(color) || isAnimated(color)) {
       return (
         <span
-          className="text-xs font-medium animate-gradient"
-          style={{ background: color.slice('animated:'.length), WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}
-        >
-          {categoryName}
-        </span>
-      )
-    }
-    if (color.startsWith('linear-gradient') || color.startsWith('radial-gradient')) {
-      return (
-        <span
-          className="text-xs font-medium"
-          style={{ background: color, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}
+          className={`text-xs font-medium ${isAnimated(color) ? 'animate-gradient' : ''}`}
+          style={{ background: stripAnimated(color), WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } as React.CSSProperties}
         >
           {categoryName}
         </span>

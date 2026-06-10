@@ -50,7 +50,7 @@ class SQLModelBankConnectionRepository(BankConnectionRepository):
             account_number=account_number, credentials=credentials,
         )
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return _to_data(orm)
 
@@ -67,7 +67,7 @@ class SQLModelBankConnectionRepository(BankConnectionRepository):
             if value is not None:
                 setattr(row, key, value)
         self._session.add(row)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(row)
         return _to_data(row)
 
@@ -81,5 +81,5 @@ class SQLModelBankConnectionRepository(BankConnectionRepository):
         if row is None:
             return False
         self._session.delete(row)
-        self._session.commit()
+        self._session.flush()
         return True

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 
 from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.transaction_service import TransactionService

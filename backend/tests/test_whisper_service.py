@@ -1,4 +1,6 @@
-from datetime import date
+from datetime import date, timedelta
+
+from app.core.time import utc_now
 from decimal import Decimal
 from unittest.mock import Mock
 from uuid import uuid4
@@ -206,11 +208,10 @@ class TestContextGrounding:
 
 class TestProposalStore:
     def test_expires_old_proposals(self) -> None:
-        from datetime import datetime, timedelta
         store = ProposalStore(ttl_minutes=10)
         uid = uuid4()
         pid = store.put({"kind": "transaction"}, uid)
-        store._pending[pid].created_at = datetime.utcnow() - timedelta(minutes=11)
+        store._pending[pid].created_at = utc_now() - timedelta(minutes=11)
         assert store.get(pid, uid) is None
 
     def test_scoped_to_user(self) -> None:

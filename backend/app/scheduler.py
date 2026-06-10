@@ -1,10 +1,11 @@
 import asyncio
 import logging
-from datetime import datetime
+from app.core.time import utc_now
 
 from sqlmodel import Session, select
 
 from app.api.container import Container
+from app.core.config import settings
 from app.application.bank_sync_service import BankSyncService, BankConnectionReader
 from app.infrastructure.database import DatabaseManager
 from app.models.bank import BankConnection
@@ -49,7 +50,7 @@ async def _auto_sync_all_banks(db_manager: DatabaseManager, container: Container
                         result.imported, result.skipped,
                     )
 
-                conn.last_sync_at = datetime.utcnow()
+                conn.last_sync_at = utc_now()
                 session.add(conn)
                 session.commit()
         except Exception as exc:
@@ -62,7 +63,7 @@ async def _sync_loop(db_manager: DatabaseManager, container: Container) -> None:
             await _auto_sync_all_banks(db_manager, container)
         except Exception as exc:
             logger.warning("Bank sync loop error: %s", exc)
-        await asyncio.sleep(3600)
+        await asyncio.sleep(settings.bank_sync_interval_seconds)
 
 
 def start_bank_sync_scheduler(db_manager: DatabaseManager, container: Container) -> asyncio.Task:

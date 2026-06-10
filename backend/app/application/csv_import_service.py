@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from app.core.domain.transaction import SOURCE_CSV_IMPORT
 from app.application.transaction_service import TransactionService
 from app.core.ports.category_repo import CategoryRepository
 from app.infrastructure.csv_parser import parse_csv, CsvParseError
@@ -49,7 +50,7 @@ class CsvImportService:
                     category=parsed.category,
                     transaction_date=parsed.transaction_date,
                     description=parsed.description,
-                    source="csv_import",
+                    source=SOURCE_CSV_IMPORT,
                 )
                 imported += 1
             except Exception as e:

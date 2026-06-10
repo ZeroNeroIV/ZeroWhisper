@@ -18,7 +18,11 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from app.core.domain.category import Category, CategoryType
-from app.core.domain.transaction import Transaction as DomainTransaction, TransactionType
+from app.core.domain.transaction import (
+    SOURCE_MANUAL,
+    Transaction as DomainTransaction,
+    TransactionType,
+)
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.ports.category_repo import CategoryRepository
 from app.core.ports.transaction_repo import TransactionRepository
@@ -82,7 +86,7 @@ class TransactionService:
         category: str,
         transaction_date: date,
         description: str | None = None,
-        source: str = "manual",
+        source: str = SOURCE_MANUAL,
         exchange_rate_override: Decimal | None = None,
         wallet_id: UUID | None = None,
         type: TransactionType | None = None,
@@ -123,7 +127,7 @@ class TransactionService:
         currency_original: str,
         transaction_date: date,
         description: str | None = None,
-        source: str = "manual",
+        source: str = SOURCE_MANUAL,
     ) -> tuple[DomainTransaction, DomainTransaction]:
         """Move money between two of the user's wallets.
 

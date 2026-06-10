@@ -11,8 +11,6 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.infrastructure.database import DatabaseManager
-
-_db_manager = DatabaseManager("data")
 from app.infrastructure.vault.manager import SqlCipherVaultManager
 from app.infrastructure.repositories.transaction_repo import SQLModelTransactionRepository
 from app.infrastructure.repositories.category_repo import SQLModelCategoryRepository
@@ -40,8 +38,8 @@ from app.infrastructure.exchange_rate_api import FrankfurterClient
 class Container:
     """Holds all application-level singletons. Created once per server process."""
 
-    def __init__(self) -> None:
-        self._db = _db_manager
+    def __init__(self, db: DatabaseManager | None = None) -> None:
+        self._db = db or DatabaseManager(settings.db_dir)
         self._vault_manager = SqlCipherVaultManager(self._db, settings.setup_state_path)
         self._ai_factory = ConfigDrivenAIProviderFactory()
         # Pending Whisper proposals must outlive a single request, so the

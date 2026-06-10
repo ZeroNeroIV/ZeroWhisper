@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKeyUserDep, ContainerDep, SessionDep
 from app.application.mcp_service import MCPService
-from app.core.domain.user import User
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 

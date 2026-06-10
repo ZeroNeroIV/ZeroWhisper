@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.time import utc_now
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
@@ -23,4 +24,4 @@ class Wallet(SQLModel, table=True):
     )
     icon: Optional[str] = Field(default=None)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

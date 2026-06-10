@@ -23,31 +23,28 @@ from app.core.exceptions import DomainError
 
 logger = logging.getLogger(__name__)
 
-_CONTAINER: Container | None = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _CONTAINER
-    _CONTAINER = Container()
-    app.state.container = _CONTAINER
+    container = Container()
+    app.state.container = container
 
     # Load runtime AI settings
     from app.infrastructure import ai_settings
     ai_settings.load()
 
     # Auto-unlock any open vaults
-    _CONTAINER.vault_manager.auto_unlock_open_vaults()
+    container.vault_manager.auto_unlock_open_vaults()
 
     # Start background scheduler
     from app.scheduler import start_bank_sync_scheduler
-    scheduler_task = start_bank_sync_scheduler(_CONTAINER.db, _CONTAINER)
+    scheduler_task = start_bank_sync_scheduler(container.db, container)
 
-    logger.info("ZeroWhisper started — vault ready: %s", _CONTAINER.vault_manager.is_db_ready())
+    logger.info("ZeroWhisper started — vault ready: %s", container.vault_manager.is_db_ready())
     yield
 
     scheduler_task.cancel()
-    _CONTAINER.db.dispose()
+    container.db.dispose()
 
 
 app = FastAPI(
@@ -80,18 +77,21 @@ async def catchall_error_handler(request: Request, exc: Exception) -> JSONRespon
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 
+_ALWAYS_ALLOWED_PATHS = {
+    "/health", "/setup/status", "/setup/initialize", "/setup/unlock",
+    "/setup/recover", "/setup/vaults", "/docs", "/openapi.json", "/redoc",
+}
+
+
 @app.middleware("http")
 async def setup_guard_middleware(request: Request, call_next):
     """Block requests to protected endpoints when the DB is not ready."""
     path = request.url.path
-    always_allowed = {
-        "/health", "/setup/status", "/setup/initialize", "/setup/unlock",
-        "/setup/recover", "/setup/vaults", "/docs", "/openapi.json", "/redoc",
-    }
-    if any(path == p or path.startswith(p) for p in always_allowed):
+    if any(path == p or path.startswith(p + "/") for p in _ALWAYS_ALLOWED_PATHS):
         return await call_next(request)
 
-    if not _CONTAINER or not _CONTAINER.vault_manager.is_db_ready():
+    container = getattr(request.app.state, "container", None)
+    if container is None or not container.vault_manager.is_db_ready():
         return JSONResponse(
             status_code=503,
             content={"detail": "Database not ready. Complete setup at /setup/initialize"},

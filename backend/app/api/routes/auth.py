@@ -19,6 +19,9 @@ def register(
 ):
     service: AuthService = container.auth_service(session)
     user = service.register(body.username, body.email, body.password)
+    # Seed default categories at account creation so Whisper, bank sync and
+    # the UI never have to write during a read path.
+    container.category_repo(session).seed_defaults(user.id)
     return UserRead(
         id=str(user.id),
         username=user.username,

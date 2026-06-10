@@ -58,7 +58,11 @@ class ConfigDrivenAIProviderFactory(AIProviderFactory):
         openai_key = _s("openai_api_key", settings.openai_api_key)
 
         if groq_key:
-            return GroqTranscriptionProvider(api_key=groq_key)
+            return GroqTranscriptionProvider(
+                api_key=groq_key,
+                base_url=settings.groq_base_url,
+                model=settings.groq_transcription_model,
+            )
         if openai_key:
             return OpenAITranscriptionProvider(
                 api_key=openai_key,

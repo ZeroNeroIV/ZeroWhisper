@@ -117,7 +117,7 @@ class BankSyncService:
         imported = 0
         skipped = 0
         valid_categories = {
-            c.name for c in self._cat_repo.seed_defaults(connection.user_id)
+            c.name for c in self._cat_repo.find_by_user(connection.user_id)
         }
 
         for btx in bank_txs:

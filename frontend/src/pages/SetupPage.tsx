@@ -461,6 +461,9 @@ export default function SetupPage() {
     }
   }
 
+  // Fetch-on-mount; all setState calls in loadVaults happen after awaits,
+  // which the set-state-in-effect rule cannot see through.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadVaults() }, [])
 
   const titles: Record<View, string> = {

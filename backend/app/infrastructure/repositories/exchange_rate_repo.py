@@ -22,7 +22,7 @@ class SQLModelExchangeRateRepository(ExchangeRateRepository):
     def set_rate(self, rate: Decimal, for_date: date, source: str = "manual") -> DomainRate:
         orm = ORMRate(date=for_date, jod_per_usd=rate, source=source)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return DomainRate(date=orm.date, jod_per_usd=orm.jod_per_usd, source=orm.source)
 

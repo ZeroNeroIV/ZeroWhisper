@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.bank_sync_service import BankSyncService, BankConnectionReader

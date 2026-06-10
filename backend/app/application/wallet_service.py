@@ -11,12 +11,11 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
+from app.core.domain.transaction import VALID_CURRENCIES
 from app.core.domain.wallet import Wallet, WalletType
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.ports.transaction_repo import TransactionRepository
 from app.core.ports.wallet_repo import WalletRepository
-
-VALID_CURRENCIES = frozenset({"JOD", "USD"})
 
 
 class WalletService:
@@ -46,10 +45,11 @@ class WalletService:
         return w
 
     def _refresh_balance(self, wallet: Wallet) -> None:
-        balance = wallet.initial_balance + self._tx_repo.sum_by_wallet(wallet.id, wallet.user_id)
-        if balance != wallet.balance:
-            self._repo.update_balance(wallet.id, balance)
-        wallet.balance = balance
+        """Derive the balance in memory. Reads never write — the stored
+        balance column is informational only."""
+        wallet.balance = (
+            wallet.initial_balance + self._tx_repo.sum_by_wallet(wallet.id, wallet.user_id)
+        )
 
     def create(
         self,

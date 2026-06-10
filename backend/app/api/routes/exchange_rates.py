@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date as Date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.api.deps import ContainerDep, SessionDep, UserDep

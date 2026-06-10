@@ -82,7 +82,7 @@ class SQLModelTransactionRepository(TransactionRepository):
     def save(self, tx: DomainTransaction) -> DomainTransaction:
         orm = self._to_orm(tx)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return self._to_domain(orm)
 
@@ -160,7 +160,7 @@ class SQLModelTransactionRepository(TransactionRepository):
             raise NotFoundError("Transaction", str(tx_id))
         orm.is_deleted = True
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
 
     def update(self, tx: DomainTransaction) -> DomainTransaction:
         orm = self._session.exec(
@@ -181,7 +181,7 @@ class SQLModelTransactionRepository(TransactionRepository):
         orm.wallet_id = tx.wallet_id
         orm.type = tx.type.value
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return self._to_domain(orm)
 
@@ -236,16 +236,21 @@ class SQLModelTransactionRepository(TransactionRepository):
         ).one()
         return result or Decimal("0")
 
+    @staticmethod
+    def _month_bounds(year: int, month: int) -> tuple[date, date]:
+        start = date(year, month, 1)
+        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        return start, end
+
     def monthly_spending_by_category(
         self,
         user_id: UUID,
         year: int,
         month: int,
         exclude_categories: list[str] | None = None,
+        types: list[str] | None = None,
     ) -> dict[str, Decimal]:
-        from datetime import date as _date
-        month_start = _date(year, month, 1)
-        month_end = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+        month_start, month_end = self._month_bounds(year, month)
 
         query = select(
             ORMTransaction.category,
@@ -259,23 +264,22 @@ class SQLModelTransactionRepository(TransactionRepository):
         )
         if exclude_categories:
             query = query.where(ORMTransaction.category.notin_(exclude_categories))
+        if types:
+            query = query.where(ORMTransaction.type.in_(types))
         query = query.group_by(ORMTransaction.category)
 
-        result: dict[str, Decimal] = {}
-        for cat, total in self._session.exec(query).all():
-            result[cat] = total
-        return result
+        return {cat: total for cat, total in self._session.exec(query).all()}
 
-    def cash_flow(
+    def daily_spending_by_category(
         self,
         user_id: UUID,
-        from_date: date,
-        to_date: date,
-        income_categories: list[str],
-        savings_categories: list[str],
-    ) -> list[dict]:
-        exclude = set(income_categories) | set(savings_categories)
-        rows = self._session.exec(
+        year: int,
+        month: int,
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[int, str, Decimal]]:
+        month_start, month_end = self._month_bounds(year, month)
+
+        query = (
             select(
                 ORMTransaction.transaction_date,
                 ORMTransaction.category,
@@ -284,102 +288,106 @@ class SQLModelTransactionRepository(TransactionRepository):
             .where(
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
+                ORMTransaction.type == TransactionType.EXPENSE.value,
+                ORMTransaction.transaction_date >= month_start,
+                ORMTransaction.transaction_date < month_end,
+            )
+            .group_by(ORMTransaction.transaction_date, ORMTransaction.category)
+        )
+        if exclude_categories:
+            query = query.where(ORMTransaction.category.notin_(exclude_categories))
+
+        return [
+            (tx_date.day, category, total)
+            for tx_date, category, total in self._session.exec(query).all()
+        ]
+
+    def daily_flow(
+        self,
+        user_id: UUID,
+        from_date: date,
+        to_date: date,
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[date, Decimal, Decimal]]:
+        query = (
+            select(
+                ORMTransaction.transaction_date,
+                ORMTransaction.type,
+                func.sum(ORMTransaction.amount_base).label("total"),
+            )
+            .where(
+                ORMTransaction.user_id == user_id,
+                ORMTransaction.is_deleted == False,
                 ORMTransaction.type.notin_(TRANSFER_TYPES),
                 ORMTransaction.transaction_date >= from_date,
                 ORMTransaction.transaction_date <= to_date,
-                ORMTransaction.category.notin_(list(exclude)) if exclude else True,
             )
-            .group_by(ORMTransaction.transaction_date, ORMTransaction.category)
+            .group_by(ORMTransaction.transaction_date, ORMTransaction.type)
             .order_by(ORMTransaction.transaction_date)
-        ).all()
+        )
+        if exclude_categories:
+            query = query.where(ORMTransaction.category.notin_(exclude_categories))
 
-        daily: dict[date, dict] = {}
-        for tx_date, category, total in rows:
-            if tx_date not in daily:
-                daily[tx_date] = {"date": str(tx_date), "income": 0.0, "expenses": 0.0}
-            if category in income_categories:
-                daily[tx_date]["income"] += float(total)
+        daily: dict[date, list[Decimal]] = {}
+        for tx_date, tx_type, total in self._session.exec(query).all():
+            entry = daily.setdefault(tx_date, [Decimal("0"), Decimal("0")])
+            if tx_type == TransactionType.INCOME.value:
+                entry[0] += total
             else:
-                daily[tx_date]["expenses"] += float(total)
+                entry[1] += total
+        return [(d, income, expenses) for d, (income, expenses) in sorted(daily.items())]
 
-        result = sorted(daily.values(), key=lambda x: x["date"])
-        running = 0.0
-        for day in result:
-            running += day["income"] - day["expenses"]
-            day["balance"] = round(running, 2)
-            day["income"] = round(day["income"], 2)
-            day["expenses"] = round(day["expenses"], 2)
-        return result
-
-    def net_worth_trend(
-        self,
-        user_id: UUID,
-        income_categories: list[str],
-        expense_categories: list[str],
-    ) -> list[dict]:
+    def monthly_net(self, user_id: UUID) -> list[tuple[str, Decimal]]:
+        signed = case(
+            (ORMTransaction.type == TransactionType.INCOME.value, ORMTransaction.amount_base),
+            else_=-ORMTransaction.amount_base,
+        )
+        month_expr = func.strftime("%Y-%m", ORMTransaction.transaction_date)
         rows = self._session.exec(
-            select(
-                func.strftime("%Y-%m", ORMTransaction.transaction_date).label("month"),
-                ORMTransaction.category,
-                func.sum(ORMTransaction.amount_base).label("total"),
-            )
+            select(month_expr.label("month"), func.sum(signed).label("net"))
             .where(
                 ORMTransaction.user_id == user_id,
                 ORMTransaction.is_deleted == False,
                 ORMTransaction.type.notin_(TRANSFER_TYPES),
             )
-            .group_by(
-                func.strftime("%Y-%m", ORMTransaction.transaction_date),
-                ORMTransaction.category,
-            )
-            .order_by(func.strftime("%Y-%m", ORMTransaction.transaction_date))
+            .group_by(month_expr)
+            .order_by(month_expr)
         ).all()
+        return [(month, net) for month, net in rows]
 
-        monthly: dict[str, float] = {}
-        for month, category, total in rows:
-            delta = float(total) if category in income_categories else -float(total)
-            monthly[month] = monthly.get(month, 0.0) + delta
-
-        cumulative = 0.0
-        result = []
-        for month in sorted(monthly):
-            cumulative += monthly[month]
-            result.append({"month": month, "net_worth": round(cumulative, 2)})
-        return result
-
-    def monthly_totals_by_type(
+    def totals_by_type(
         self,
         user_id: UUID,
-        year: int,
-        month: int,
-        type_map: dict[str, str],
-        savings_categories: list[str],
+        year: int | None = None,
+        month: int | None = None,
+        exclude_categories: list[str] | None = None,
     ) -> tuple[Decimal, Decimal]:
-        from datetime import date as _date
-        month_start = _date(year, month, 1)
-        month_end = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+        """(total_income, total_expenses) classified by the transaction's own type.
 
-        exclude = set(savings_categories)
-        rows = self._session.exec(
-            select(
-                ORMTransaction.category,
-                func.sum(ORMTransaction.amount_base).label("total"),
-            )
-            .where(
-                ORMTransaction.user_id == user_id,
-                ORMTransaction.is_deleted == False,
-                ORMTransaction.type.notin_(TRANSFER_TYPES),
+        Limited to one month when year+month are given, lifetime otherwise.
+        """
+        query = select(
+            ORMTransaction.type,
+            func.sum(ORMTransaction.amount_base).label("total"),
+        ).where(
+            ORMTransaction.user_id == user_id,
+            ORMTransaction.is_deleted == False,
+            ORMTransaction.type.notin_(TRANSFER_TYPES),
+        )
+        if year is not None and month is not None:
+            month_start, month_end = self._month_bounds(year, month)
+            query = query.where(
                 ORMTransaction.transaction_date >= month_start,
                 ORMTransaction.transaction_date < month_end,
-                ORMTransaction.category.notin_(list(exclude)) if exclude else True,
             )
-            .group_by(ORMTransaction.category)
-        ).all()
+        if exclude_categories:
+            query = query.where(ORMTransaction.category.notin_(exclude_categories))
+        query = query.group_by(ORMTransaction.type)
 
         total_income = Decimal("0")
         total_expenses = Decimal("0")
-        for cat, total in rows:
-            if type_map.get(cat) == "income":
+        for tx_type, total in self._session.exec(query).all():
+            if tx_type == TransactionType.INCOME.value:
                 total_income += total
             else:
                 total_expenses += total

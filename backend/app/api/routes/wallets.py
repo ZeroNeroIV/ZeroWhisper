@@ -5,14 +5,12 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlmodel import Session
 
 from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.transaction_service import TransactionService
 from app.application.wallet_service import WalletService
-from app.core.domain.user import User
 from app.core.domain.wallet import WalletType
 from app.schemas.transaction import TransactionRead, tx_to_read
 
