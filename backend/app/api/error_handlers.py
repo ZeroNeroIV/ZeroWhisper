@@ -13,6 +13,7 @@ from app.core.exceptions import (
     ConflictError,
     DatabaseNotReadyError,
     DomainError,
+    ForbiddenError,
     NotFoundError,
     UnauthorizedError,
     ValidationError,
@@ -23,6 +24,7 @@ def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     mapping = {
         NotFoundError: status.HTTP_404_NOT_FOUND,
         UnauthorizedError: status.HTTP_401_UNAUTHORIZED,
+        ForbiddenError: status.HTTP_403_FORBIDDEN,
         ConflictError: status.HTTP_409_CONFLICT,
         ValidationError: status.HTTP_400_BAD_REQUEST,
         DatabaseNotReadyError: status.HTTP_503_SERVICE_UNAVAILABLE,

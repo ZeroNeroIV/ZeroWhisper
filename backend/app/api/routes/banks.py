@@ -1,20 +1,13 @@
-"""Bank connection routes — CRUD + sync using new Hexagonal services."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlmodel import Session
+from fastapi import APIRouter, HTTPException
 
-from app.api.deps import get_current_user, get_session, _get_bank_sync_service
+from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.bank_sync_service import BankSyncService, BankConnectionReader
 from app.application.bank_connection_service import BankService as BankConnectionService
-from app.core.domain.user import User
 from app.schemas.bank import BankConnectionCreate, BankConnectionRead, BankConnectionUpdate
 
 router = APIRouter(prefix="/api/banks", tags=["banks"])
-
-
-def _get_svc(request: Request, session: Session = Depends(get_session)) -> BankConnectionService:
-    return request.app.state.container.bank_connection_service(session)
 
 
 def _to_read(conn) -> BankConnectionRead:
@@ -31,20 +24,22 @@ def _to_read(conn) -> BankConnectionRead:
 
 @router.get("")
 def list_connections(
-    request: Request,
-    user: User = Depends(get_current_user),
-    svc=Depends(_get_svc),
+    container: ContainerDep,
+    session: SessionDep,
+    user: UserDep,
 ):
+    svc: BankConnectionService = container.bank_connection_service(session)
     return [_to_read(c) for c in svc.list_connections(user.id)]
 
 
 @router.post("", status_code=201)
 def create_connection(
+    container: ContainerDep,
+    session: SessionDep,
     body: BankConnectionCreate,
-    request: Request,
-    user: User = Depends(get_current_user),
-    svc=Depends(_get_svc),
+    user: UserDep,
 ):
+    svc: BankConnectionService = container.bank_connection_service(session)
     conn = svc.create_connection(
         user_id=user.id,
         bank_name=body.bank_name,
@@ -57,11 +52,12 @@ def create_connection(
 
 @router.get("/{conn_id}")
 def get_connection(
+    container: ContainerDep,
+    session: SessionDep,
     conn_id: int,
-    request: Request,
-    user: User = Depends(get_current_user),
-    svc=Depends(_get_svc),
+    user: UserDep,
 ):
+    svc: BankConnectionService = container.bank_connection_service(session)
     conn = svc.get_connection(conn_id, user.id)
     if conn is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -70,12 +66,13 @@ def get_connection(
 
 @router.put("/{conn_id}")
 def update_connection(
+    container: ContainerDep,
+    session: SessionDep,
     conn_id: int,
     body: BankConnectionUpdate,
-    request: Request,
-    user: User = Depends(get_current_user),
-    svc=Depends(_get_svc),
+    user: UserDep,
 ):
+    svc: BankConnectionService = container.bank_connection_service(session)
     conn = svc.update_connection(
         conn_id, user.id,
         is_active=body.is_active,
@@ -89,11 +86,12 @@ def update_connection(
 
 @router.delete("/{conn_id}")
 def delete_connection(
+    container: ContainerDep,
+    session: SessionDep,
     conn_id: int,
-    request: Request,
-    user: User = Depends(get_current_user),
-    svc=Depends(_get_svc),
+    user: UserDep,
 ):
+    svc: BankConnectionService = container.bank_connection_service(session)
     ok = svc.delete_connection(conn_id, user.id)
     if not ok:
         raise HTTPException(status_code=404, detail="not found")
@@ -102,13 +100,13 @@ def delete_connection(
 
 @router.post("/{conn_id}/sync")
 async def sync_connection(
+    container: ContainerDep,
+    session: SessionDep,
     conn_id: int,
-    request: Request,
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
-    svc: BankSyncService = Depends(_get_bank_sync_service),
-    bank_svc=Depends(_get_svc),
+    user: UserDep,
 ):
+    bank_svc: BankConnectionService = container.bank_connection_service(session)
+    sync_svc: BankSyncService = container.bank_sync_service(session)
     conn = bank_svc.get_connection(conn_id, user.id)
     if conn is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -122,5 +120,5 @@ async def sync_connection(
         "last_sync_at": conn.last_sync_at,
     })
 
-    result = await svc.sync_connection(reader)
+    result = await sync_svc.sync_connection(reader)
     return {"imported": result.imported, "skipped": result.skipped, "total": result.total}

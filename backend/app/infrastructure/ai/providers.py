@@ -158,12 +158,9 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
 
 class GroqTranscriptionProvider(TranscriptionProvider):
 
-    def __init__(self, api_key: str) -> None:
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
-        )
-        self._model = "whisper-large-v3"
+    def __init__(self, api_key: str, base_url: str, model: str) -> None:
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._model = model
 
     async def transcribe(self, data: bytes, filename: str) -> str:
         mime = "audio/webm" if filename.endswith(".webm") else "audio/ogg"

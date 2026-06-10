@@ -16,7 +16,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': backendUrl,
-      '/setup': backendUrl,
+      '/setup/': backendUrl,
       '/auth': backendUrl,
       '/mcp': backendUrl,
     },

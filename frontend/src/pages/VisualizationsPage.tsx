@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/lib/api'
-import { TabList, Tab, Card, Button, Input, Tooltip as FluentTooltip } from '@fluentui/react-components'
+import { TabList, Tab } from '@/components/ui/Tabs'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Tooltip as UiTooltip } from '@/components/ui/Tooltip'
 import { Play, Pause, Timer } from 'lucide-react'
 import {
   ComposedChart,
@@ -9,7 +13,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend,
   AreaChart,
   Area,
@@ -114,7 +118,7 @@ function CashFlowTab() {
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} />
-        <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} JOD`]} />
+        <RechartsTooltip formatter={(value) => [`${Number(value).toFixed(2)} JOD`]} />
         <Legend />
         <Bar dataKey="income" name="Income" fill="#22c55e" />
         <Bar dataKey="expenses" name="Expenses" fill="#ef4444" />
@@ -168,7 +172,7 @@ function SankeyTab() {
           link={{ stroke: '#93c5fd', fill: '#93c5fd', fillOpacity: 0.4 }}
           node={{ fill: '#3b82f6', stroke: '#1d4ed8' }}
         >
-          <Tooltip
+          <RechartsTooltip
             formatter={(value) => [`${Number(value).toFixed(2)} JOD`, 'Amount']}
           />
         </Sankey>
@@ -298,7 +302,7 @@ function NetWorthTab() {
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="month" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} />
-        <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} JOD`]} />
+        <RechartsTooltip formatter={(value) => [`${Number(value).toFixed(2)} JOD`]} />
         <Area
           type="monotone"
           dataKey="net_worth"
@@ -353,8 +357,8 @@ export default function VisualizationsPage() {
     setVisited(prev => new Set([...prev, tab]))
   }, [])
 
-  const handleTabChange = useCallback((_: unknown, d: { value: unknown }) => {
-    goToTab(d.value as TabKey)
+  const handleTabChange = useCallback((tab: string) => {
+    goToTab(tab as TabKey)
   }, [goToTab])
 
   // Auto-advance timer
@@ -397,26 +401,25 @@ export default function VisualizationsPage() {
             onChange={e => handleIntervalChange(e.target.value)}
             min={1}
             max={60}
-            style={{ width: '60px' }}
-            contentAfter={<span className="text-xs text-muted-foreground">s</span>}
+            className="w-[60px]"
             disabled={autoPlay}
           />
-          <FluentTooltip content={autoPlay ? 'Stop auto-advance' : 'Auto-advance tabs'} relationship="label">
+          <UiTooltip content={autoPlay ? 'Stop auto-advance' : 'Auto-advance tabs'}>
             <Button
-              appearance={autoPlay ? 'primary' : 'outline'}
-              icon={autoPlay ? <Pause size={15} /> : <Play size={15} />}
+              appearance={autoPlay ? 'primary' : 'secondary'}
               onClick={() => setAutoPlay(p => !p)}
             >
+              {autoPlay ? <Pause size={15} /> : <Play size={15} />}
               {autoPlay ? 'Stop' : 'Auto'}
             </Button>
-          </FluentTooltip>
+          </UiTooltip>
         </div>
       </div>
 
       <div className="overflow-x-auto -mx-1 px-1 mb-4">
-        <TabList selectedValue={activeTab} onTabSelect={handleTabChange} className="flex-nowrap">
+        <TabList selectedTab={activeTab} onTabSelect={handleTabChange}>
           {TAB_KEYS.map((key) => (
-            <Tab key={key} value={key}>{TAB_LABELS[key]}</Tab>
+            <Tab key={key} id={key}>{TAB_LABELS[key]}</Tab>
           ))}
         </TabList>
       </div>

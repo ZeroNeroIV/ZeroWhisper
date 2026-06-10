@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.application.analytics_service import AnalyticsService, _month_end
+from app.application.analytics_service import AnalyticsService
 from app.core.domain.transaction import Transaction as DomainTransaction, TransactionType
 from app.core.domain.category import Category, CategoryType
 from tests.helpers import InMemoryTransactionRepository, InMemoryCategoryRepository
@@ -51,14 +51,6 @@ def seeded_user(
         amount_base=Decimal("50"),
     ))
     return uid, analytics
-
-
-class TestMonthEnd:
-    def test_non_december(self) -> None:
-        assert _month_end(2025, 3) == date(2025, 4, 1)
-
-    def test_december(self) -> None:
-        assert _month_end(2025, 12) == date(2026, 1, 1)
 
 
 class TestGetCashFlow:

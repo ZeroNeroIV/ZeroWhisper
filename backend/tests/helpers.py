@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
+
 from uuid import UUID
 
 from app.core.domain.category import Category, CategoryType
@@ -176,6 +176,7 @@ class InMemoryTransactionRepository(TransactionRepository):
     def monthly_spending_by_category(
         self, user_id: UUID, year: int, month: int,
         exclude_categories: list[str] | None = None,
+        types: list[str] | None = None,
     ) -> dict[str, Decimal]:
         result: dict[str, Decimal] = {}
         for t in self._store.values():
@@ -185,68 +186,71 @@ class InMemoryTransactionRepository(TransactionRepository):
                 continue
             if exclude_categories and t.category in exclude_categories:
                 continue
+            if types and t.type.value not in types:
+                continue
             result[t.category] = result.get(t.category, Decimal("0")) + t.amount_base
         return result
 
-    def cash_flow(
+    def daily_spending_by_category(
+        self, user_id: UUID, year: int, month: int,
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[int, str, Decimal]]:
+        totals: dict[tuple[int, str], Decimal] = {}
+        for t in self._store.values():
+            if t.user_id != user_id or t.is_deleted or t.type.value != "expense":
+                continue
+            if t.transaction_date.year != year or t.transaction_date.month != month:
+                continue
+            if exclude_categories and t.category in exclude_categories:
+                continue
+            key = (t.transaction_date.day, t.category)
+            totals[key] = totals.get(key, Decimal("0")) + t.amount_base
+        return [(day, cat, total) for (day, cat), total in totals.items()]
+
+    def daily_flow(
         self, user_id: UUID, from_date: date, to_date: date,
-        income_categories: list[str], savings_categories: list[str],
-    ) -> list[dict]:
-        exclude = set(income_categories) | set(savings_categories)
-        daily: dict[date, dict[str, Any]] = {}
+        exclude_categories: list[str] | None = None,
+    ) -> list[tuple[date, Decimal, Decimal]]:
+        daily: dict[date, list[Decimal]] = {}
         for t in self._store.values():
             if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             if t.transaction_date < from_date or t.transaction_date > to_date:
                 continue
-            d = t.transaction_date
-            if d not in daily:
-                daily[d] = {"date": str(d), "income": 0.0, "expenses": 0.0}
-            if t.category in income_categories:
-                daily[d]["income"] += float(t.amount_base)
-            elif t.category not in exclude:
-                daily[d]["expenses"] += float(t.amount_base)
-        result = sorted(daily.values(), key=lambda x: x["date"])
-        running = 0.0
-        for day in result:
-            running += day["income"] - day["expenses"]
-            day["balance"] = round(running, 2)
-            day["income"] = round(day["income"], 2)
-            day["expenses"] = round(day["expenses"], 2)
-        return result
+            if exclude_categories and t.category in exclude_categories:
+                continue
+            entry = daily.setdefault(t.transaction_date, [Decimal("0"), Decimal("0")])
+            if t.type.value == "income":
+                entry[0] += t.amount_base
+            else:
+                entry[1] += t.amount_base
+        return [(d, income, expenses) for d, (income, expenses) in sorted(daily.items())]
 
-    def net_worth_trend(
-        self, user_id: UUID,
-        income_categories: list[str], expense_categories: list[str],
-    ) -> list[dict]:
-        monthly: dict[str, float] = {}
+    def monthly_net(self, user_id: UUID) -> list[tuple[str, Decimal]]:
+        monthly: dict[str, Decimal] = {}
         for t in self._store.values():
             if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
             month = t.transaction_date.strftime("%Y-%m")
-            delta = float(t.amount_base) if t.category in income_categories else -float(t.amount_base)
-            monthly[month] = monthly.get(month, 0.0) + delta
-        cumulative = 0.0
-        result: list[dict] = []
-        for month in sorted(monthly):
-            cumulative += monthly[month]
-            result.append({"month": month, "net_worth": round(cumulative, 2)})
-        return result
+            delta = t.amount_base if t.type.value == "income" else -t.amount_base
+            monthly[month] = monthly.get(month, Decimal("0")) + delta
+        return sorted(monthly.items())
 
-    def monthly_totals_by_type(
-        self, user_id: UUID, year: int, month: int,
-        type_map: dict[str, str], savings_categories: list[str],
+    def totals_by_type(
+        self, user_id: UUID, year: int | None = None, month: int | None = None,
+        exclude_categories: list[str] | None = None,
     ) -> tuple[Decimal, Decimal]:
         total_income = Decimal("0")
         total_expenses = Decimal("0")
         for t in self._store.values():
             if t.user_id != user_id or t.is_deleted or t.is_transfer:
                 continue
-            if t.transaction_date.year != year or t.transaction_date.month != month:
+            if year is not None and month is not None:
+                if t.transaction_date.year != year or t.transaction_date.month != month:
+                    continue
+            if exclude_categories and t.category in exclude_categories:
                 continue
-            if t.category in savings_categories:
-                continue
-            if type_map.get(t.category) == "income":
+            if t.type.value == "income":
                 total_income += t.amount_base
             else:
                 total_expenses += t.amount_base
@@ -293,11 +297,6 @@ class InMemoryWalletRepository(WalletRepository):
             raise NotFoundError("Wallet", str(wallet.id))
         self._store[wallet.id] = wallet
         return wallet
-
-    def update_balance(self, wallet_id: UUID, balance: Decimal) -> None:
-        w = self._store.get(wallet_id)
-        if w:
-            w.balance = balance
 
     def delete(self, wallet_id: UUID, user_id: UUID) -> bool:
         w = self._store.get(wallet_id)

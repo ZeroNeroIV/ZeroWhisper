@@ -1,15 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
-
-interface AuthContextValue {
-  isAuthenticated: boolean
-  username: string | null
-  login: (username: string, password: string) => Promise<void>
-  register: (username: string, email: string, password: string, password_confirm: string) => Promise<void>
-  logout: () => void
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
+import { AuthContext } from '@/contexts/auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(() =>
@@ -46,10 +37,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
 }

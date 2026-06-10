@@ -7,8 +7,15 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from app.core.exceptions import ValidationError
+from app.core.time import utc_now
 
+BASE_CURRENCY = "JOD"
 VALID_CURRENCIES = frozenset({"JOD", "USD"})
+
+# Where a transaction came from. Bank imports use the dynamic "bank:<name>" form.
+SOURCE_MANUAL = "manual"
+SOURCE_WHISPER = "whisper"
+SOURCE_CSV_IMPORT = "csv_import"
 
 # Maximum precision for monetary values as required by the domain.
 # Using DECIMAL(18,6) in the DB; domain layer enforces the same.
@@ -56,13 +63,13 @@ class Transaction:
     amount_base: Decimal
     exchange_rate: Decimal = Decimal("1.0")
     description: str | None = None
-    source: str = "manual"
+    source: str = SOURCE_MANUAL
     type: TransactionType = TransactionType.EXPENSE
     is_deleted: bool = False
     wallet_id: UUID | None = None
     transfer_id: UUID | None = None
     id: UUID = field(default_factory=uuid4)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
 
     def __post_init__(self) -> None:
         errors: list[str] = []
@@ -96,6 +103,6 @@ class Transaction:
         currency_original: str,
         exchange_rate: Decimal,
     ) -> Decimal:
-        if currency_original == "JOD":
+        if currency_original == BASE_CURRENCY:
             return amount_original
         return (amount_original * exchange_rate).quantize(MONETARY_PRECISION)

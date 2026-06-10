@@ -9,10 +9,13 @@ PRAGMA keys are validated as hex before interpolation to prevent injection.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from sqlmodel import SQLModel, Session, create_engine
 from typing import Generator
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class _PysqlcipherConnWrapper:
@@ -136,23 +139,39 @@ class DatabaseManager:
                         conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN {name} {ddl}'))
                         conn.commit()
                         added.append(name)
-                    except Exception:
+                    except Exception as exc:
                         conn.rollback()
+                        logger.warning(
+                            "Migration: failed to add column %s.%s: %s", table, name, exc
+                        )
                 return added
 
             add_missing_columns("category", {
                 "icon": "VARCHAR",
                 "parent_id": "VARCHAR REFERENCES category(id)",
+                "color": "VARCHAR",
+                "is_default": "INTEGER NOT NULL DEFAULT 0",
+                "type": "VARCHAR NOT NULL DEFAULT 'expense'",
             })
             add_missing_columns("wallet", {
                 "type": "VARCHAR NOT NULL DEFAULT 'cash'",
                 "initial_balance": "NUMERIC(18,6) NOT NULL DEFAULT 0",
                 "icon": "VARCHAR",
+                "currency": "VARCHAR(3) NOT NULL DEFAULT 'JOD'",
+                "is_active": "INTEGER NOT NULL DEFAULT 1",
             })
             tx_added = add_missing_columns("transaction", {
                 "wallet_id": "VARCHAR",
                 "type": "VARCHAR NOT NULL DEFAULT 'expense'",
                 "transfer_id": "VARCHAR",
+                "category": "VARCHAR NOT NULL DEFAULT ''",
+                "source": "VARCHAR NOT NULL DEFAULT 'manual'",
+                "currency_original": "VARCHAR NOT NULL DEFAULT 'JOD'",
+                "is_deleted": "INTEGER NOT NULL DEFAULT 0",
+            })
+            # Also add missing exchange rate source column
+            add_missing_columns("exchangerate", {
+                "source": "VARCHAR NOT NULL DEFAULT 'manual'",
             })
 
             # Backfill transaction.type from the owning user's category types so
@@ -168,8 +187,9 @@ class DatabaseManager:
                         ")"
                     ))
                     conn.commit()
-                except Exception:
+                except Exception as exc:
                     conn.rollback()
+                    logger.warning("Migration: transaction.type backfill failed: %s", exc)
 
     @property
     def engine(self):
@@ -177,11 +197,21 @@ class DatabaseManager:
         return self._engine
 
     def get_session(self) -> Generator[Session, None, None]:
-        """FastAPI-compatible session generator."""
+        """FastAPI-compatible session generator and unit-of-work boundary.
+
+        Repositories flush but never commit; the whole request commits here
+        on success and rolls back on any exception, so multi-write use cases
+        (transfers, CSV imports, transfer-leg syncs) are atomic.
+        """
         if self._engine is None:
             raise RuntimeError("Database engine not initialized")
         with Session(self._engine) as session:
-            yield session
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
 
     def is_ready(self) -> bool:
         return self._engine is not None

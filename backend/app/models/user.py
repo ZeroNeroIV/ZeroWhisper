@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.time import utc_now
 from uuid import UUID, uuid4
 
 from sqlmodel import SQLModel, Field
@@ -10,4 +11,4 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True, max_length=255)
     hashed_password: str
     is_admin: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

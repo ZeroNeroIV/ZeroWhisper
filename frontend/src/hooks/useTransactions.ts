@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { api } from '@/lib/api'
+import { api, apiErrorDetail } from '@/lib/api'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 
 interface Filters {
@@ -10,6 +10,7 @@ interface Filters {
   date_to?: string
   wallet_id?: string
   type?: string
+  q?: string
 }
 
 export function useTransactions() {
@@ -26,8 +27,8 @@ export function useTransactions() {
       const { data } = await api.get('/api/transactions', { params })
       setTransactions(data.items)
       setTotal(data.total)
-    } catch {
-      setError('Failed to load transactions')
+    } catch (err) {
+      setError(apiErrorDetail(err) || 'Failed to load transactions')
     } finally {
       setLoading(false)
     }

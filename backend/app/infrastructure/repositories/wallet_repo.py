@@ -3,7 +3,6 @@ SQLModel-backed WalletRepository implementation.
 """
 from __future__ import annotations
 
-from decimal import Decimal
 from uuid import UUID
 
 from sqlmodel import Session, func, select
@@ -67,7 +66,7 @@ class SQLModelWalletRepository(WalletRepository):
     def save(self, wallet: DomainWallet) -> DomainWallet:
         orm = _to_orm(wallet)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return _to_domain(orm)
 
@@ -87,16 +86,9 @@ class SQLModelWalletRepository(WalletRepository):
         orm.initial_balance = wallet.initial_balance
         orm.is_active = wallet.is_active
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return _to_domain(orm)
-
-    def update_balance(self, wallet_id: UUID, balance: Decimal) -> None:
-        orm = self._session.get(ORMWallet, wallet_id)
-        if orm:
-            orm.balance = balance
-            self._session.add(orm)
-            self._session.commit()
 
     def delete(self, wallet_id: UUID, user_id: UUID) -> bool:
         row = self._session.exec(
@@ -108,5 +100,5 @@ class SQLModelWalletRepository(WalletRepository):
         if not row:
             return False
         self._session.delete(row)
-        self._session.commit()
+        self._session.flush()
         return True

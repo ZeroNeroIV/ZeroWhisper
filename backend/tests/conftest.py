@@ -14,15 +14,14 @@ from fastapi.testclient import TestClient
 # model_validator does not reject the insecure default.
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-testing-only-32ch")
 
-# Must import database helpers before the app to avoid circular issues
-from app.database import initialize_engine, _db_manager
+from app.infrastructure.database import DatabaseManager
 
 # Attempt to import SQLCipher; skip gracefully if unavailable.
 try:
+    import pysqlcipher3.dbapi2  # noqa: F401
     _SQLCIPHER_AVAILABLE = True
-except Exception as _import_exc:
+except Exception:
     _SQLCIPHER_AVAILABLE = False
-    _import_exc_msg = str(_import_exc)
 
 TEST_KEY = "testkey123"
 
@@ -33,8 +32,8 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="function")
-def test_db():
-    """Create a fresh encrypted test database for each test."""
+def test_db_manager():
+    """A DatabaseManager bound to a fresh encrypted database file."""
     if not _SQLCIPHER_AVAILABLE:
         pytest.skip("SQLCipher not available")
 
@@ -43,10 +42,12 @@ def test_db():
     # Remove so SQLCipher creates it fresh
     os.unlink(db_path)
 
-    initialize_engine(db_path, TEST_KEY)
+    manager = DatabaseManager(tempfile.gettempdir())
+    manager.initialize_encrypted(db_path, TEST_KEY)
 
-    yield db_path
+    yield manager
 
+    manager.dispose()
     try:
         os.unlink(db_path)
     except FileNotFoundError:
@@ -54,27 +55,28 @@ def test_db():
 
 
 @pytest.fixture(scope="function")
-def client(test_db):
-    """TestClient with overridden session dependency."""
-    if not _SQLCIPHER_AVAILABLE:
-        pytest.skip("SQLCipher not available")
+def test_db(test_db_manager):
+    """Backward-compatible alias yielding the manager (tests use sessions off it)."""
+    yield test_db_manager
 
+
+@pytest.fixture(scope="function")
+def client(test_db_manager):
+    """TestClient with the app's session dependency pointed at the test DB."""
     from app.main import app
-    from app.database import get_session
+    from app.api import deps
 
     def get_test_session():
-        for session in _db_manager.get_session():
-            yield session
+        yield from test_db_manager.get_session()
 
-    app.dependency_overrides[get_session] = get_test_session
+    app.dependency_overrides[deps.get_session] = get_test_session
     with TestClient(app, raise_server_exceptions=True) as c:
-        # Sync Container vault state with test DB state so the
-        # setup-guard middleware doesn't block requests
-        from app.main import _CONTAINER
-        if _CONTAINER:
-            _CONTAINER.vault_manager._active_vault_id = "test"
-            _CONTAINER.vault_manager._current_key = TEST_KEY
-            _CONTAINER.vault_manager._db_ready = True
+        # Mark the container's vault as unlocked so the setup-guard
+        # middleware lets requests through.
+        container = app.state.container
+        container.vault_manager._active_vault_id = "test"
+        container.vault_manager._current_key = TEST_KEY
+        container.vault_manager._db_ready = True
         yield c
     app.dependency_overrides.clear()
 

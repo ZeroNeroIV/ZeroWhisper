@@ -1,15 +1,8 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import {
-  Dialog,
-  DialogSurface,
-  DialogBody,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@fluentui/react-components'
+import { Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions } from '@/components/ui/Dialog'
+import { Button } from '@/components/ui/Button'
 import { Upload } from 'lucide-react'
 
 interface ImportResult {
@@ -82,7 +75,7 @@ export function CsvImportDialog({ open, onOpenChange, onImported }: CsvImportDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_, data) => { if (!data.open) handleClose() }}>
+    <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose() }}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>Import Transactions from CSV</DialogTitle>
@@ -93,7 +86,7 @@ export function CsvImportDialog({ open, onOpenChange, onImported }: CsvImportDia
 
             <div className="space-y-4">
               <Button
-                appearance="outline"
+                appearance="secondary"
                 onClick={async () => {
                   try {
                     const { data } = await api.get('/api/imports/template', { responseType: 'blob' })
@@ -164,7 +157,7 @@ export function CsvImportDialog({ open, onOpenChange, onImported }: CsvImportDia
             </div>
           </DialogContent>
           <DialogActions>
-            <Button appearance="outline" onClick={handleClose} disabled={importing}>
+            <Button appearance="secondary" onClick={handleClose} disabled={importing}>
               Close
             </Button>
             <Button

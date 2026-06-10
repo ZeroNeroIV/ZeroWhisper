@@ -75,6 +75,11 @@ class CategoryService:
         clear_parent: bool = False,
     ) -> Category:
         existing = self.get(cat_id, user_id)
+        if existing.type == CategoryType.TRANSFER:
+            raise ValidationError(
+                "The reserved Transfer category cannot be modified — transfer "
+                "legs and analytics exclusions depend on it"
+            )
         if name is not None:
             existing.name = name
         if type is not None:

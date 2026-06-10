@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { api } from '@/lib/api'
+import { api, apiErrorDetail } from '@/lib/api'
 
 export interface ApiKey {
   id: number
@@ -21,12 +21,16 @@ export interface ExchangeRate {
 export function useApiKeys() {
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchKeys = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const { data } = await api.get<ApiKey[]>('/api/api-keys')
       setKeys(data)
+    } catch (err) {
+      setError(apiErrorDetail(err) || 'Failed to load API keys')
     } finally {
       setLoading(false)
     }
@@ -45,16 +49,18 @@ export function useApiKeys() {
     setKeys((prev) => prev.filter((k) => k.id !== id))
   }
 
-  return { keys, loading, fetchKeys, createKey, revokeKey }
+  return { keys, loading, error, fetchKeys, createKey, revokeKey }
 }
 
 export function useExchangeRates() {
   const [current, setCurrent] = useState<ExchangeRate | null>(null)
   const [history, setHistory] = useState<ExchangeRate[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchRates = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const [cur, hist] = await Promise.all([
         api.get<ExchangeRate>('/api/exchange-rates/current').catch(() => ({ data: null })),
@@ -62,6 +68,8 @@ export function useExchangeRates() {
       ])
       setCurrent(cur.data)
       setHistory(hist.data)
+    } catch (err) {
+      setError(apiErrorDetail(err) || 'Failed to load exchange rates')
     } finally {
       setLoading(false)
     }
@@ -79,7 +87,7 @@ export function useExchangeRates() {
     return data
   }
 
-  return { current, history, loading, fetch: fetchRates, setRate, toggleAutoFetch }
+  return { current, history, loading, error, fetch: fetchRates, setRate, toggleAutoFetch }
 }
 
 export interface FxSettings {
@@ -90,12 +98,16 @@ export interface FxSettings {
 export function useExchangeRateSettings() {
   const [settings, setSettings] = useState<FxSettings | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const { data } = await api.get<FxSettings>('/api/exchange-rates/settings')
       setSettings(data)
+    } catch (err) {
+      setError(apiErrorDetail(err) || 'Failed to load FX settings')
     } finally {
       setLoading(false)
     }
@@ -107,5 +119,5 @@ export function useExchangeRateSettings() {
     return data
   }
 
-  return { settings, loading, fetchSettings, updateSettings }
+  return { settings, loading, error, fetchSettings, updateSettings }
 }

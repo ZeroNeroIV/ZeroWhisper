@@ -102,7 +102,7 @@ class AIServiceError(DomainError):
         wrapped: Exception | None = None,
         context: dict[str, Any] | None = None,
     ) -> None:
-        ctx = context or {}
+        ctx = dict(context or {})
         if wrapped:
             ctx["wrapped"] = str(wrapped)
         super().__init__(detail=detail, context=ctx)

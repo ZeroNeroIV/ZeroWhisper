@@ -13,12 +13,18 @@ service instance would forget every proposal as soon as the request ended.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import threading
+from datetime import date, timedelta
+from app.core.time import utc_now
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
 from app.core.config import settings
-from app.core.domain.transaction import Transaction as DomainTransaction
+from app.core.domain.transaction import (
+    BASE_CURRENCY,
+    SOURCE_WHISPER,
+    Transaction as DomainTransaction,
+)
 from app.core.domain.wallet import Wallet
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.ports.ai_provider import AIProvider
@@ -36,34 +42,43 @@ class PendingProposal:
     def __init__(self, proposal_data: dict, user_id: str) -> None:
         self.proposal_data = proposal_data
         self.user_id = user_id
-        self.created_at = datetime.utcnow()
+        self.created_at = utc_now()
 
 
 class ProposalStore:
-    """In-memory pending-proposal store shared across requests, with TTL expiry."""
+    """In-memory pending-proposal store shared across requests, with TTL expiry.
+
+    Guarded by a lock because FastAPI serves sync endpoints from a threadpool,
+    so puts/gets/cleanups can run concurrently. Proposals do not survive a
+    process restart — acceptable for short-lived confirmations.
+    """
 
     def __init__(self, ttl_minutes: int = settings.whisper_proposal_ttl_minutes) -> None:
         self._ttl = timedelta(minutes=ttl_minutes)
         self._pending: dict[str, PendingProposal] = {}
+        self._lock = threading.Lock()
 
     def put(self, proposal_data: dict, user_id: UUID) -> str:
-        self._cleanup_expired()
         proposal_id = str(uuid4())
-        self._pending[proposal_id] = PendingProposal(proposal_data, str(user_id))
+        with self._lock:
+            self._cleanup_expired()
+            self._pending[proposal_id] = PendingProposal(proposal_data, str(user_id))
         return proposal_id
 
     def get(self, proposal_id: str, user_id: UUID) -> dict | None:
-        self._cleanup_expired()
-        entry = self._pending.get(proposal_id)
-        if not entry or entry.user_id != str(user_id):
-            return None
-        return entry.proposal_data
+        with self._lock:
+            self._cleanup_expired()
+            entry = self._pending.get(proposal_id)
+            if not entry or entry.user_id != str(user_id):
+                return None
+            return entry.proposal_data
 
     def remove(self, proposal_id: str) -> None:
-        self._pending.pop(proposal_id, None)
+        with self._lock:
+            self._pending.pop(proposal_id, None)
 
     def _cleanup_expired(self) -> None:
-        cutoff = datetime.utcnow() - self._ttl
+        cutoff = utc_now() - self._ttl
         expired = [pid for pid, p in self._pending.items() if p.created_at < cutoff]
         for pid in expired:
             del self._pending[pid]
@@ -90,7 +105,7 @@ class WhisperService:
     # ── Parsing ───────────────────────────────────────────────────────────────────
 
     async def parse_message(self, user_id: UUID, message: str) -> dict:
-        categories = self._cat_repo.seed_defaults(user_id)
+        categories = self._cat_repo.find_by_user(user_id)
         cat_context = [
             {"name": c.name, "type": c.type.value}
             for c in categories if c.type.value != "transfer"
@@ -129,7 +144,7 @@ class WhisperService:
             "kind": "transaction",
             "intent": intent,
             "amount_original": str(action["amount"]),
-            "currency_original": action.get("currency") or "JOD",
+            "currency_original": action.get("currency") or BASE_CURRENCY,
             "category": category,
             "description": action.get("description"),
             "transaction_date": action.get("transaction_date"),
@@ -139,7 +154,7 @@ class WhisperService:
         }
         proposal_id = self._store.put(proposal, user_id)
 
-        now = datetime.utcnow()
+        now = utc_now()
         spending = self._tx_repo.monthly_spending_by_category(user_id, now.year, now.month)
         this_month_total = spending.get(category, Decimal("0"))
         transaction_count = self._tx_repo.count_by_category_month(
@@ -217,13 +232,10 @@ class WhisperService:
         )
 
     def _answer_spending(self, user_id: UUID) -> dict:
-        now = datetime.utcnow()
-        type_map = self._cat_repo.get_type_map(user_id)
-        spending = self._tx_repo.monthly_spending_by_category(user_id, now.year, now.month)
-        expenses = {
-            cat: total for cat, total in spending.items()
-            if type_map.get(cat) not in ("income", "transfer")
-        }
+        now = utc_now()
+        expenses = self._tx_repo.monthly_spending_by_category(
+            user_id, now.year, now.month, types=["expense"],
+        )
         if not expenses:
             return self._reply("No spending recorded this month. Either impressive discipline or an empty ledger.")
         total = sum(expenses.values(), Decimal("0"))
@@ -250,12 +262,28 @@ class WhisperService:
 
     # ── Confirmation ──────────────────────────────────────────────────────────────
 
+    # Fields the client may adjust before confirming. Structural fields
+    # (kind, intent) and identity fields stay server-controlled.
+    _TX_OVERRIDABLE = frozenset({
+        "amount_original", "currency_original", "category",
+        "description", "transaction_date", "wallet_id",
+    })
+    _TRANSFER_OVERRIDABLE = frozenset({
+        "amount_original", "currency_original", "description",
+        "transaction_date", "from_wallet_id", "to_wallet_id",
+    })
+
     def confirm(self, proposal_id: str, user_id: UUID, overrides: dict | None = None) -> DomainTransaction:
         proposal = self._store.get(proposal_id, user_id)
         if proposal is None:
             raise NotFoundError("Proposal", proposal_id)
 
-        merged = {**proposal, **(overrides or {})}
+        allowed = (
+            self._TRANSFER_OVERRIDABLE if proposal["kind"] == "transfer"
+            else self._TX_OVERRIDABLE
+        )
+        safe_overrides = {k: v for k, v in (overrides or {}).items() if k in allowed}
+        merged = {**proposal, **safe_overrides}
         tx_date = _parse_date(merged.get("transaction_date"))
         amount = _parse_amount(merged.get("amount_original"))
 
@@ -268,7 +296,7 @@ class WhisperService:
                 currency_original=merged["currency_original"],
                 transaction_date=tx_date,
                 description=merged.get("description"),
-                source="whisper",
+                source=SOURCE_WHISPER,
             )
             tx = out_leg
         else:
@@ -280,7 +308,7 @@ class WhisperService:
                 category=merged["category"],
                 transaction_date=tx_date,
                 description=merged.get("description"),
-                source="whisper",
+                source=SOURCE_WHISPER,
                 wallet_id=UUID(str(wallet_id)) if wallet_id else None,
             )
         self._store.remove(proposal_id)
@@ -328,7 +356,7 @@ def _parse_date(value) -> date:
             return date.fromisoformat(str(value))
         except ValueError:
             pass
-    return datetime.utcnow().date()
+    return utc_now().date()
 
 
 def _parse_amount(value) -> Decimal:

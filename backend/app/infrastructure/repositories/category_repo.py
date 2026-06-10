@@ -90,7 +90,7 @@ class SQLModelCategoryRepository(CategoryRepository):
     def save(self, category: DomainCategory) -> DomainCategory:
         orm = self._to_orm(category)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return self._to_domain(orm)
 
@@ -109,7 +109,7 @@ class SQLModelCategoryRepository(CategoryRepository):
         orm.icon = category.icon
         orm.parent_id = category.parent_id
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return self._to_domain(orm)
 
@@ -135,7 +135,7 @@ class SQLModelCategoryRepository(CategoryRepository):
         if self.has_children(cat_id, user_id):
             raise ConflictError(f"Category '{orm.name}' has sub-categories; delete or move them first")
         self._session.delete(orm)
-        self._session.commit()
+        self._session.flush()
 
     def has_children(self, cat_id: UUID, user_id: UUID) -> bool:
         child = self._session.exec(

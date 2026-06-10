@@ -1,20 +1,13 @@
-"""MCP API routes — Model Context Protocol for AI agent access."""
 from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Request, HTTPException, status
-from sqlmodel import Session
+from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import get_current_user_by_api_key, get_session
+from app.api.deps import ApiKeyUserDep, ContainerDep, SessionDep
 from app.application.mcp_service import MCPService
-from app.core.domain.user import User
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
-
-
-def _get_service(request: Request, session: Session = Depends(get_session)) -> MCPService:
-    return request.app.state.container.mcp_service(session)
 
 
 @router.get("/manifest")
@@ -28,43 +21,25 @@ def get_manifest():
 
 
 @router.get("/resources")
-def list_resources(_user: User = Depends(get_current_user_by_api_key)):
+def list_resources(_user: ApiKeyUserDep):
     return [
-        {
-            "uri": "zerowhisper://balance",
-            "name": "Account Balance",
-            "description": "Current JOD balance",
-        },
-        {
-            "uri": "zerowhisper://transactions/recent",
-            "name": "Recent Transactions",
-            "description": "Last 10 transactions (no descriptions)",
-        },
-        {
-            "uri": "zerowhisper://transactions/by-category",
-            "name": "Spending by Category",
-            "description": "Current month spending grouped by category",
-        },
-        {
-            "uri": "zerowhisper://net-worth",
-            "name": "Net Worth",
-            "description": "Lifetime income vs expenses",
-        },
-        {
-            "uri": "zerowhisper://wallets",
-            "name": "Wallets",
-            "description": "Wallets with type, currency and current balance",
-        },
+        {"uri": "zerowhisper://balance", "name": "Account Balance", "description": "Current JOD balance"},
+        {"uri": "zerowhisper://transactions/recent", "name": "Recent Transactions", "description": "Last 10 transactions (no descriptions)"},
+        {"uri": "zerowhisper://transactions/by-category", "name": "Spending by Category", "description": "Current month spending grouped by category"},
+        {"uri": "zerowhisper://net-worth", "name": "Net Worth", "description": "Lifetime income vs expenses"},
+        {"uri": "zerowhisper://wallets", "name": "Wallets", "description": "Wallets with type, currency and current balance"},
     ]
 
 
 @router.get("/resources/{resource_path:path}")
 def get_resource(
     resource_path: str,
-    user: User = Depends(get_current_user_by_api_key),
-    service: MCPService = Depends(_get_service),
+    container: ContainerDep,
+    session: SessionDep,
+    user: ApiKeyUserDep,
 ):
     today = date.today()
+    service: MCPService = container.mcp_service(session)
     mapping = {
         "balance": lambda: service.get_balance(user.id),
         "transactions/recent": lambda: service.get_recent_transactions(user.id),
@@ -80,32 +55,29 @@ def get_resource(
 
 @router.post("/tools/call")
 def call_tool(
+    container: ContainerDep,
+    session: SessionDep,
     body: dict,
-    user: User = Depends(get_current_user_by_api_key),
-    service: MCPService = Depends(_get_service),
+    user: ApiKeyUserDep,
 ):
     today = date.today()
     tool = body.get("tool", "")
     args = body.get("args", {}) or {}
+    service: MCPService = container.mcp_service(session)
 
-    if tool == "get_balance":
-        return service.get_balance(user.id)
-    elif tool == "get_recent_transactions":
-        return service.get_recent_transactions(user.id, limit=args.get("limit", 10))
-    elif tool == "get_spending_by_category":
-        return service.get_spending_by_category(
-            user.id,
-            args.get("month", today.month),
-            args.get("year", today.year),
-        )
-    elif tool == "get_net_worth":
-        return service.get_net_worth(user.id)
-    elif tool == "get_wallets":
-        return service.get_wallets(user.id)
-    else:
+    mapping = {
+        "get_balance": lambda: service.get_balance(user.id),
+        "get_recent_transactions": lambda: service.get_recent_transactions(user.id, limit=args.get("limit", 10)),
+        "get_spending_by_category": lambda: service.get_spending_by_category(user.id, args.get("month", today.month), args.get("year", today.year)),
+        "get_net_worth": lambda: service.get_net_worth(user.id),
+        "get_wallets": lambda: service.get_wallets(user.id),
+    }
+    handler = mapping.get(tool)
+    if not handler:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown tool")
+    return handler()
 
 
 @router.get("/prompts")
-def list_prompts(_user: User = Depends(get_current_user_by_api_key)):
+def list_prompts(_user: ApiKeyUserDep):
     return []

@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.time import utc_now
 from typing import Optional
 from uuid import UUID
 from sqlmodel import SQLModel, Field
@@ -14,4 +15,4 @@ class ApiKey(SQLModel, table=True):
     name: str                                    # human label
     is_active: bool = Field(default=True)
     last_used_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

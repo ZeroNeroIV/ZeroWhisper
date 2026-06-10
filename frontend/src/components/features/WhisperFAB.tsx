@@ -2,7 +2,8 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { useWhisper } from '@/hooks/useWhisper'
 import { useAuth } from '@/hooks/useAuth'
 import { TransactionProposalCard } from '@/components/features/TransactionProposalCard'
-import { Button, Input } from '@fluentui/react-components'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { MessageSquare, Send, Mic, MicOff, Loader2, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -264,27 +265,29 @@ export function WhisperFAB() {
                       <Button size="small" appearance="primary" onClick={() => { clearHistory(); setShowClearConfirm(false) }}>
                         Yes
                       </Button>
-                      <Button size="small" appearance="outline" onClick={() => setShowClearConfirm(false)}>
+                      <Button size="small" appearance="secondary" onClick={() => setShowClearConfirm(false)}>
                         No
                       </Button>
                     </div>
                   ) : (
                     <Button
                       size="small"
-                      appearance="subtle"
-                      icon={<Trash2 size={12} />}
+                      appearance="ghost"
                       onClick={() => setShowClearConfirm(true)}
                       title="Clear conversation"
-                    />
+                    >
+                      <Trash2 size={12} />
+                    </Button>
                   )
                 )}
                 <Button
                   size="small"
-                  appearance="subtle"
-                  icon={<X size={16} />}
+                  appearance="ghost"
                   onClick={() => setOpen(false)}
                   title="Close"
-                />
+                >
+                  <X size={16} />
+                </Button>
               </div>
             </header>
 
@@ -342,23 +345,22 @@ export function WhisperFAB() {
                 <Button
                   type="button"
                   size="small"
-                  appearance={recording ? 'primary' : 'outline'}
-                  icon={
-                    transcribing
-                      ? <Loader2 size={14} className="animate-spin" />
-                      : recording
-                        ? <MicOff size={14} />
-                        : <Mic size={14} />
-                  }
+                  appearance={recording ? 'primary' : 'secondary'}
                   onClick={toggleMic}
                   disabled={loading || transcribing}
                   title={recording ? 'Stop recording' : 'Start recording'}
                   className={cn(recording && 'animate-pulse')}
                   style={recording ? { backgroundColor: '#dc2626', borderColor: '#dc2626' } : undefined}
-                />
+                >
+                  {transcribing
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : recording
+                      ? <MicOff size={14} />
+                      : <Mic size={14} />
+                  }
+                </Button>
 
                 <Input
-                  size="small"
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder={
@@ -375,9 +377,10 @@ export function WhisperFAB() {
                   type="submit"
                   size="small"
                   appearance="primary"
-                  icon={<Send size={14} />}
                   disabled={loading || micBusy || !input.trim()}
-                />
+                >
+                  <Send size={14} />
+                </Button>
               </form>
             </div>
           </div>

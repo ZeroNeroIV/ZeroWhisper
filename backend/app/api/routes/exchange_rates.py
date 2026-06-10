@@ -1,17 +1,14 @@
-"""Exchange rate API routes — thin HTTP glue for rate CRUD."""
 from __future__ import annotations
 
 from datetime import date as Date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlmodel import Session
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import ContainerDep, SessionDep, UserDep
 from app.application.exchange_rate_service import ExchangeRateService
 from app.core.config import settings
-from app.core.domain.user import User
 
 router = APIRouter(prefix="/api/exchange-rates", tags=["exchange-rates"])
 
@@ -25,16 +22,13 @@ class AutoFetchToggle(BaseModel):
     enabled: bool
 
 
-def _get_service(request: Request, session: Session = Depends(get_session)) -> ExchangeRateService:
-    return request.app.state.container.exchange_rate_service(session)
-
-
 @router.get("/current")
 def get_current(
-    request: Request,
-    _user: User = Depends(get_current_user),
-    service: ExchangeRateService = Depends(_get_service),
+    container: ContainerDep,
+    session: SessionDep,
+    _user: UserDep,
 ):
+    service: ExchangeRateService = container.exchange_rate_service(session)
     row = service.get_current()
     if row is None:
         return {"rate": settings.default_exchange_rate, "source": "default"}
@@ -43,31 +37,34 @@ def get_current(
 
 @router.get("/history")
 def get_history(
-    request: Request,
-    _user: User = Depends(get_current_user),
-    service: ExchangeRateService = Depends(_get_service),
+    container: ContainerDep,
+    session: SessionDep,
+    _user: UserDep,
 ):
+    service: ExchangeRateService = container.exchange_rate_service(session)
     return service.get_history(limit=30)
 
 
 @router.post("")
 def create_rate(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     body: SetRateRequest,
-    _user: User = Depends(get_current_user),
-    service: ExchangeRateService = Depends(_get_service),
+    _user: UserDep,
 ):
+    service: ExchangeRateService = container.exchange_rate_service(session)
     row = service.set_rate(body.rate, body.date, source="manual")
     return row
 
 
 @router.put("/auto-fetch")
 def toggle_auto_fetch(
-    request: Request,
+    container: ContainerDep,
+    session: SessionDep,
     body: AutoFetchToggle,
-    _user: User = Depends(get_current_user),
-    service: ExchangeRateService = Depends(_get_service),
+    _user: UserDep,
 ):
+    service: ExchangeRateService = container.exchange_rate_service(session)
     service.toggle_auto_fetch(body.enabled)
     return {"auto_fetch_enabled": body.enabled}
 
@@ -84,7 +81,7 @@ class FxSettingsUpdate(BaseModel):
 
 @router.get("/settings")
 def get_fx_settings(
-    _user: User = Depends(get_current_user),
+    _user: UserDep,
 ):
     from app.infrastructure import ai_settings
     key = ai_settings.get("fx_api_key", "")
@@ -98,7 +95,7 @@ def get_fx_settings(
 @router.put("/settings")
 def update_fx_settings(
     body: FxSettingsUpdate,
-    _user: User = Depends(get_current_user),
+    _user: UserDep,
 ):
     from app.infrastructure import ai_settings
     patch = {}

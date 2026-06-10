@@ -57,6 +57,6 @@ class SQLModelUserRepository(UserRepository):
     def save(self, user: DomainUser) -> DomainUser:
         orm = self._to_orm(user)
         self._session.add(orm)
-        self._session.commit()
+        self._session.flush()
         self._session.refresh(orm)
         return self._to_domain(orm)

@@ -1,5 +1,6 @@
 import datetime as dt
 from datetime import datetime
+from app.core.time import utc_now
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
@@ -13,7 +14,7 @@ class ExchangeRate(SQLModel, table=True):
     date: dt.date = Field(index=True)
     jod_per_usd: Decimal = Field(sa_column=Column(Numeric(precision=18, scale=6)))
     source: str = Field(default="manual")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Transaction(SQLModel, table=True):
@@ -34,4 +35,4 @@ class Transaction(SQLModel, table=True):
     is_deleted: bool = Field(default=False)
     wallet_id: Optional[UUID] = Field(default=None, foreign_key="wallet.id", index=True)
     transfer_id: Optional[UUID] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

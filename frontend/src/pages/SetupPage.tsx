@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { Card, Button, Input, Field } from '@fluentui/react-components'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Field } from '@/components/ui/Field'
 import { Lock, Unlock, Plus, ShieldCheck, Globe } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -90,14 +93,14 @@ function VaultsView({
           ) : vault.vault_type === 'open' ? (
             <Button
               size="small"
-              appearance="outline"
+              appearance="secondary"
               disabled={openingId === vault.id}
               onClick={() => handleOpenVaultClick(vault)}
             >
               {openingId === vault.id ? '…' : 'Open'}
             </Button>
           ) : (
-            <Button size="small" appearance="outline" onClick={() => onUnlock(vault)}>
+            <Button size="small" appearance="secondary" onClick={() => onUnlock(vault)}>
               Unlock
             </Button>
           )}
@@ -330,7 +333,7 @@ function RecoveryPhraseView({ phrase, onContinue }: { phrase: string; onContinue
         {phrase}
       </div>
 
-      <Button appearance="outline" className="w-full" onClick={handleCopy}>
+      <Button appearance="secondary" className="w-full" onClick={handleCopy}>
         {copied ? 'Copied!' : 'Copy to clipboard'}
       </Button>
 
@@ -458,6 +461,9 @@ export default function SetupPage() {
     }
   }
 
+  // Fetch-on-mount; all setState calls in loadVaults happen after awaits,
+  // which the set-state-in-effect rule cannot see through.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadVaults() }, [])
 
   const titles: Record<View, string> = {

@@ -1,19 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { type AxiosError } from 'axios'
-import {
-  Button,
-  Input,
-  Field,
-  Card,
-  TabList,
-  Tab,
-} from '@fluentui/react-components'
+import { api } from '@/lib/api'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Field } from '@/components/ui/Field'
+import { Card } from '@/components/ui/Card'
+import { TabList, Tab } from '@/components/ui/Tabs'
 
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/hooks/useAuth'
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 
@@ -76,19 +74,14 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <Field
-        label="Username"
-        validationMessage={errors.username?.message}
-        validationState={errors.username ? 'error' : 'none'}
-      >
+      <Field label="Username">
         <Input placeholder="your_username" autoComplete="username" {...register('username')} />
       </Field>
+      {errors.username?.message && (
+        <p className="text-sm text-red-500">{errors.username.message}</p>
+      )}
 
-      <Field
-        label="Password"
-        validationMessage={errors.password?.message}
-        validationState={errors.password ? 'error' : 'none'}
-      >
+      <Field label="Password">
         <Input
           type="password"
           placeholder="••••••••"
@@ -96,6 +89,9 @@ function LoginForm() {
           {...register('password')}
         />
       </Field>
+      {errors.password?.message && (
+        <p className="text-sm text-red-500">{errors.password.message}</p>
+      )}
 
       {error && (
         <p className="text-sm font-medium text-red-600">{error}</p>
@@ -137,19 +133,14 @@ function RegisterForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <Field
-        label="Username"
-        validationMessage={errors.username?.message}
-        validationState={errors.username ? 'error' : 'none'}
-      >
+      <Field label="Username">
         <Input placeholder="your_username" autoComplete="username" {...register('username')} />
       </Field>
+      {errors.username?.message && (
+        <p className="text-sm text-red-500">{errors.username.message}</p>
+      )}
 
-      <Field
-        label="Email"
-        validationMessage={errors.email?.message}
-        validationState={errors.email ? 'error' : 'none'}
-      >
+      <Field label="Email">
         <Input
           type="email"
           placeholder="you@example.com"
@@ -157,12 +148,11 @@ function RegisterForm() {
           {...register('email')}
         />
       </Field>
+      {errors.email?.message && (
+        <p className="text-sm text-red-500">{errors.email.message}</p>
+      )}
 
-      <Field
-        label="Password"
-        validationMessage={errors.password?.message}
-        validationState={errors.password ? 'error' : 'none'}
-      >
+      <Field label="Password">
         <Input
           type="password"
           placeholder="••••••••"
@@ -170,12 +160,11 @@ function RegisterForm() {
           {...register('password')}
         />
       </Field>
+      {errors.password?.message && (
+        <p className="text-sm text-red-500">{errors.password.message}</p>
+      )}
 
-      <Field
-        label="Confirm password"
-        validationMessage={errors.password_confirm?.message}
-        validationState={errors.password_confirm ? 'error' : 'none'}
-      >
+      <Field label="Confirm password">
         <Input
           type="password"
           placeholder="••••••••"
@@ -183,6 +172,9 @@ function RegisterForm() {
           {...register('password_confirm')}
         />
       </Field>
+      {errors.password_confirm?.message && (
+        <p className="text-sm text-red-500">{errors.password_confirm.message}</p>
+      )}
 
       {error && (
         <p className="text-sm font-medium text-red-600">{error}</p>
@@ -199,6 +191,38 @@ function RegisterForm() {
 
 export default function LoginPage() {
   const [activeTab, setActiveTab] = useState('login')
+  const [checking, setChecking] = useState(true)
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
+
+    const checkDb = async () => {
+      try {
+        const { data } = await api.get('/setup/status')
+        if (!data.db_ready || data.state !== 'INITIALIZED') {
+          navigate('/setup', { replace: true })
+          return
+        }
+      } catch {
+        /* Can't reach backend — show login as fallback */
+      }
+      setChecking(false)
+    }
+    checkDb()
+  }, [isAuthenticated, navigate])
+
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -212,12 +236,12 @@ export default function LoginPage() {
           </div>
 
           <TabList
-            selectedValue={activeTab}
-            onTabSelect={(_, d) => setActiveTab(d.value as string)}
+            selectedTab={activeTab}
+            onTabSelect={(tab) => setActiveTab(tab)}
             className="w-full mb-6"
           >
-            <Tab value="login" className="flex-1">Sign in</Tab>
-            <Tab value="register" className="flex-1">Register</Tab>
+            <Tab id="login">Sign in</Tab>
+            <Tab id="register">Register</Tab>
           </TabList>
 
           {activeTab === 'login' && <LoginForm />}

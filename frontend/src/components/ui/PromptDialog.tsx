@@ -1,15 +1,8 @@
 import { useState } from 'react'
-import {
-  Dialog,
-  DialogSurface,
-  DialogBody,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Input,
-  Field,
-  Button,
-} from '@fluentui/react-components'
+import { Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Input'
+import { Field } from '@/components/ui/Field'
+import { Button } from '@/components/ui/Button'
 
 interface PromptDialogProps {
   open: boolean
@@ -40,7 +33,7 @@ export function PromptDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_, data) => handleOpenChange(data.open)}>
+    <Dialog open={open} onOpenChange={(open) => handleOpenChange(open)}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>{title}</DialogTitle>
@@ -61,7 +54,7 @@ export function PromptDialog({
             </Field>
           </DialogContent>
           <DialogActions>
-            <Button appearance="outline" onClick={() => handleOpenChange(false)}>
+            <Button appearance="secondary" onClick={() => handleOpenChange(false)}>
               {cancelLabel}
             </Button>
             <Button
