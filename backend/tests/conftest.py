@@ -23,7 +23,8 @@ try:
 except Exception:
     _SQLCIPHER_AVAILABLE = False
 
-TEST_KEY = "testkey123"
+# Must be valid hex — DatabaseManager validates keys before PRAGMA interpolation.
+TEST_KEY = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 pytestmark = pytest.mark.skipif(
     not _SQLCIPHER_AVAILABLE,
@@ -65,19 +66,30 @@ def client(test_db_manager):
     """TestClient with the app's session dependency pointed at the test DB."""
     from app.main import app
     from app.api import deps
+    from app.core.ratelimit import auth_rate_limit
 
     def get_test_session():
         yield from test_db_manager.get_session()
 
     app.dependency_overrides[deps.get_session] = get_test_session
+    # The sliding-window limiter is process-wide; a full suite run would
+    # exhaust it and make later logins fail spuriously.
+    app.dependency_overrides[auth_rate_limit] = lambda: None
     with TestClient(app, raise_server_exceptions=True) as c:
         # Mark the container's vault as unlocked so the setup-guard
-        # middleware lets requests through.
+        # middleware lets requests through, and report INITIALIZED to
+        # /setup/status (get_state reads the on-disk vault registry,
+        # which tests never create).
         container = app.state.container
         container.vault_manager._active_vault_id = "test"
         container.vault_manager._current_key = TEST_KEY
         container.vault_manager._db_ready = True
-        yield c
+        original_get_state = container.vault_manager.get_state
+        container.vault_manager.get_state = lambda: "INITIALIZED"
+        try:
+            yield c
+        finally:
+            container.vault_manager.get_state = original_get_state
     app.dependency_overrides.clear()
 
 
@@ -88,6 +100,7 @@ def auth_headers(client):
         "username": "testuser",
         "email": "test@example.com",
         "password": "testpass123",
+        "password_confirm": "testpass123",
     })
     resp = client.post("/auth/login", json={
         "username": "testuser",

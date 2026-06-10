@@ -4,7 +4,6 @@ End-to-end integration tests for ZeroWhisper backend.
 Each test uses an isolated encrypted SQLite DB (see conftest.py).
 Tests that need OPENAI_API_KEY are skipped when it is not set.
 """
-import io
 import os
 
 import pytest
@@ -68,6 +67,7 @@ def test_auth_flow(client):
         "username": "alice",
         "email": "alice@x.com",
         "password": "pass1234",
+        "password_confirm": "pass1234",
     })
     assert r.status_code == 201
     user_data = r.json()
@@ -107,7 +107,10 @@ def test_auth_flow(client):
 
 def test_register_duplicate_username(client):
     """Registering the same username twice returns 409."""
-    payload = {"username": "bob", "email": "bob@x.com", "password": "pass1234"}
+    payload = {
+        "username": "bob", "email": "bob@x.com",
+        "password": "pass1234", "password_confirm": "pass1234",
+    }
     client.post("/auth/register", json=payload)
     r = client.post("/auth/register", json=payload)
     assert r.status_code == 409
@@ -123,7 +126,7 @@ def test_transaction_crud(client, auth_headers):
     r = client.post("/api/transactions", headers=auth_headers, json={
         "amount_original": 50.0,
         "currency_original": "JOD",
-        "category": "Food",
+        "category": "Food & Drinks",
         "description": "Groceries",
         "transaction_date": "2026-05-01",
     })
@@ -133,7 +136,7 @@ def test_transaction_crud(client, auth_headers):
     assert _decimal_approx(tx["amount_original"], 50.0)
     assert _decimal_approx(tx["amount_base"], 50.0)
     assert tx["currency_original"] == "JOD"
-    assert tx["category"] == "Food"
+    assert tx["category"] == "Food & Drinks"
     tx_id = tx["id"]
 
     # List — should have exactly 1 transaction
@@ -146,7 +149,7 @@ def test_transaction_crud(client, auth_headers):
     # Get single transaction
     r = client.get(f"/api/transactions/{tx_id}", headers=auth_headers)
     assert r.status_code == 200
-    assert r.json()["category"] == "Food"
+    assert r.json()["category"] == "Food & Drinks"
 
     # Update category
     r = client.put(f"/api/transactions/{tx_id}", headers=auth_headers, json={"category": "Health"})
@@ -175,7 +178,7 @@ def test_transaction_pagination(client, auth_headers):
         client.post("/api/transactions", headers=auth_headers, json={
             "amount_original": float(10 + i),
             "currency_original": "JOD",
-            "category": "Food",
+            "category": "Food & Drinks",
             "description": f"Item {i}",
             "transaction_date": f"2026-05-0{i + 1}",
         })
@@ -212,7 +215,7 @@ def test_exchange_rate(client, auth_headers):
     r = client.post("/api/transactions", headers=auth_headers, json={
         "amount_original": 100.0,
         "currency_original": "USD",
-        "category": "Food",
+        "category": "Food & Drinks",
         "description": "USD purchase",
         "transaction_date": "2026-05-01",
     })
@@ -239,14 +242,14 @@ def test_csv_import(client, auth_headers):
     """Valid CSV rows are imported; transaction list reflects the import."""
     csv_content = (
         "transaction_date,amount_original,currency_original,category,description\n"
-        "2026-05-01,50,JOD,Food,Groceries\n"
-        "2026-05-02,20,JOD,Transport,Bus"
+        "2026-05-01,50,JOD,Food & Drinks,Groceries\n"
+        "2026-05-02,20,JOD,Transportation,Bus"
     )
 
     r = client.post(
         "/api/imports/csv",
         headers=auth_headers,
-        files={"file": ("test.csv", io.StringIO(csv_content), "text/csv")},
+        files={"file": ("test.csv", csv_content.encode(), "text/csv")},
     )
     assert r.status_code == 200
     data = r.json()
@@ -262,14 +265,14 @@ def test_csv_import_bad_rows(client, auth_headers):
     """Bad rows are reported as errors; good rows still get imported."""
     csv_content = (
         "transaction_date,amount_original,currency_original,category,description\n"
-        "2026-05-01,50,JOD,Food,OK\n"
-        "not-a-date,bad,JOD,Food,BAD"
+        "2026-05-01,50,JOD,Food & Drinks,OK\n"
+        "not-a-date,bad,JOD,Food & Drinks,BAD"
     )
 
     r = client.post(
         "/api/imports/csv",
         headers=auth_headers,
-        files={"file": ("test.csv", io.StringIO(csv_content), "text/csv")},
+        files={"file": ("test.csv", csv_content.encode(), "text/csv")},
     )
     assert r.status_code == 200
     data = r.json()
@@ -282,12 +285,11 @@ def test_csv_import_empty_file(client, auth_headers):
     r = client.post(
         "/api/imports/csv",
         headers=auth_headers,
-        files={"file": ("empty.csv", io.StringIO(""), "text/csv")},
+        files={"file": ("empty.csv", b"", "text/csv")},
     )
-    # Service raises ValueError("CSV file is empty") → router catches and returns {"error": ...}
-    assert r.status_code == 200
-    data = r.json()
-    assert "error" in data
+    # An empty upload is a validation error
+    assert r.status_code == 400
+    assert "empty" in r.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
